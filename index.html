@@ -539,10 +539,12 @@
                     if (!localStream) {
                         log('No local stream, starting media first...');
                         startMedia().then(() => {
+                            log('Answering call with local stream');
                             call.answer(localStream);
                             setupMediaConnection(call);
                         });
                     } else {
+                        log('Answering call with existing local stream');
                         call.answer(localStream);
                         setupMediaConnection(call);
                     }
@@ -559,7 +561,9 @@
             };
 
             const setupDataConnection = (conn) => {
+                const isInitiator = !dataConnection;
                 dataConnection = conn;
+
                 conn.on('open', async () => {
                     log('Data connection established with:', conn.peer);
                     updateStatus(`Connected!`, 'success');
@@ -576,8 +580,10 @@
 
                     await new Promise(resolve => setTimeout(resolve, 500));
 
-                    const call = peer.call(conn.peer, localStream);
-                    setupMediaConnection(call);
+                    if (isInitiator) {
+                        const call = peer.call(conn.peer, localStream);
+                        setupMediaConnection(call);
+                    }
                 });
                 conn.on('data', data => { addMessageToUI(data.sender, data.text); });
                 conn.on('close', () => {
