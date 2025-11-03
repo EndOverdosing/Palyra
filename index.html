@@ -556,8 +556,10 @@
                 themeSwitcher: document.getElementById('theme-switcher'),
             };
 
-            let peer, localStream, dataConnection, mediaConnection;
+            let peer, localStream, dataConnection, mediaConnection, connectionTimeout;
             let state = { username: ls.get('username', 'User'), currentRoomId: null };
+
+            const log = (...args) => console.log('[P2P DEBUG]', ...args);
 
             const updateStatus = (message, type = 'info') => {
                 ui.statusDiv.textContent = message;
@@ -584,60 +586,99 @@
             };
 
             const initializePeer = (forceNew = false) => {
+                log('Initializing Peer instance...');
                 if (peer) peer.destroy();
                 const peerId = forceNew ? null : ls.get('myPeerId', null);
                 peer = peerId ? new Peer(peerId) : new Peer();
 
                 peer.on('open', id => {
+                    log('PeerJS connection to server established. My ID:', id);
                     ls.set('myPeerId', id);
                     ui.myIdInput.value = id;
                     updateStatus("Ready to connect.");
                 });
-                peer.on('connection', setupDataConnection);
-                peer.on('call', handleIncomingCall);
-                peer.on('disconnected', () => setTimeout(() => peer.reconnect(), 3000));
+                peer.on('connection', conn => {
+                    log('Incoming data connection request from:', conn.peer);
+                    setupDataConnection(conn);
+                });
+                peer.on('call', call => {
+                    log('Incoming media call request from:', call.peer);
+                    handleIncomingCall(call);
+                });
+                peer.on('disconnected', () => {
+                    log('Peer disconnected from signaling server. Attempting to reconnect...');
+                    setTimeout(() => peer.reconnect(), 3000);
+                });
                 peer.on('error', err => {
-                    console.error('PeerJS error:', err);
+                    log('PEERJS ERROR:', err);
                     updateStatus(`${err.message}`, 'error');
-                    if (err.type === 'unavailable-id') initializePeer(true);
+                    if (err.type === 'unavailable-id') {
+                        log('Peer ID was unavailable, requesting a new one.');
+                        initializePeer(true);
+                    }
                 });
             };
 
             const connectToPeer = (remoteId) => {
                 if (!remoteId || !peer) return updateStatus('Please enter a valid peer ID.', 'error');
+                log(`Attempting to connect to peer: ${remoteId}`);
                 leaveRoom(false);
                 updateStatus(`Connecting to ${remoteId}...`);
+
                 const conn = peer.connect(remoteId, { reliable: true });
+
+                clearTimeout(connectionTimeout);
+                connectionTimeout = setTimeout(() => {
+                    log('Connection timed out.');
+                    updateStatus('Connection timed out. Peer may be offline or behind a firewall.', 'error');
+                    conn.close();
+                }, 15000);
+
                 setupDataConnection(conn);
             };
 
             const setupDataConnection = (conn) => {
+                log('Setting up data connection listeners for peer:', conn.peer);
                 dataConnection = conn;
                 dataConnection.on('open', () => {
+                    log('Data connection established with:', dataConnection.peer);
+                    clearTimeout(connectionTimeout);
                     state.currentRoomId = dataConnection.peer;
                     ls.set('currentRoomId', state.currentRoomId);
-                    updateStatus(`Connected to ${state.currentRoomId}`, 'success');
+                    updateStatus(`Connected to peer!`, 'success');
                     showCallUI(true);
                     setChatLoading(false);
                     loadChatHistory();
                 });
-                dataConnection.on('data', handleIncomingMessage);
-                dataConnection.on('close', () => leaveRoom(true));
-                dataConnection.on('error', err => console.error("Data connection error:", err));
+                dataConnection.on('data', data => {
+                    log('Received data:', data);
+                    handleIncomingMessage(data);
+                });
+                dataConnection.on('close', () => {
+                    log('Data connection closed by peer.');
+                    leaveRoom(true)
+                });
+                dataConnection.on('error', err => log('DATA CONNECTION ERROR:', err));
             };
 
             const setupMediaConnection = (call) => {
+                log('Setting up media connection listeners for peer:', call.peer);
                 mediaConnection = call;
                 mediaConnection.on('stream', stream => {
+                    log('Received remote media stream.');
                     ui.remoteVideo.srcObject = stream;
                     setRemoteVideoLoading(false);
                     ui.remoteVideo.play();
                 });
-                mediaConnection.on('close', stopCall);
-                mediaConnection.on('error', err => console.error("Media connection error:", err));
+                mediaConnection.on('close', () => {
+                    log('Media connection closed by peer.');
+                    stopCall();
+                });
+                mediaConnection.on('error', err => log('MEDIA CONNECTION ERROR:', err));
             };
 
             const handleIncomingCall = (call) => {
+                log('Answering incoming call.');
                 startLocalStream().then(() => {
                     call.answer(localStream);
                     setupMediaConnection(call);
@@ -645,34 +686,37 @@
             };
 
             const startLocalStream = async (isScreenShare = false) => {
+                log(`Requesting local media stream. Screen share: ${isScreenShare}`);
                 try {
                     if (localStream) localStream.getTracks().forEach(track => track.stop());
-                    const constraints = isScreenShare
-                        ? { video: true, audio: true }
-                        : { video: true, audio: true };
+                    const constraints = { video: true, audio: true };
                     localStream = isScreenShare
                         ? await navigator.mediaDevices.getDisplayMedia(constraints)
                         : await navigator.mediaDevices.getUserMedia(constraints);
                     ui.localVideo.srcObject = localStream;
+                    log('Successfully acquired local stream.');
                     return localStream;
                 } catch (err) {
-                    console.error('Failed to get local stream', err);
+                    log('Error getting local stream:', err);
                     updateStatus('Could not access camera/mic.', 'error');
                 }
             };
 
             const startCall = async (isScreenShare) => {
                 if (!state.currentRoomId) return;
+                log('Initiating a call...');
                 await startLocalStream(isScreenShare);
                 if (localStream && peer) {
                     if (mediaConnection) mediaConnection.close();
                     setRemoteVideoLoading(true);
+                    log(`Calling peer: ${state.currentRoomId}`);
                     const call = peer.call(state.currentRoomId, localStream);
                     setupMediaConnection(call);
                 }
             };
 
             const stopCall = () => {
+                log('Stopping call and cleaning up media streams.');
                 if (mediaConnection) { mediaConnection.close(); mediaConnection = null; }
                 if (localStream) { localStream.getTracks().forEach(track => track.stop()); localStream = null; }
                 ui.localVideo.srcObject = null;
@@ -681,6 +725,7 @@
             };
 
             const leaveRoom = (wasDisconnected = false) => {
+                log(`Leaving room. Was disconnected: ${wasDisconnected}`);
                 stopCall();
                 if (dataConnection) { dataConnection.close(); dataConnection = null; }
                 state.currentRoomId = null;
@@ -716,6 +761,7 @@
                 const text = ui.messageInput.value.trim();
                 if (text && dataConnection?.open) {
                     const message = { sender: state.username, text };
+                    log('Sending message:', message);
                     dataConnection.send(message);
                     addMessageToUI('You', text);
                     saveMessageToHistory('You', text);
