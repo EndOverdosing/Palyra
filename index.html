@@ -222,7 +222,7 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 0.5rem;
+            gap: 0.6rem;
             background-color: var(--primary-accent);
             color: black;
             border: none;
@@ -256,7 +256,7 @@
         }
 
         button .fa-solid {
-            font-size: 0.9em;
+            font-size: 1em;
         }
 
         #status {
@@ -281,19 +281,22 @@
             margin-bottom: 1.5rem;
         }
 
-        .video-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
+        .video-area {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16/9;
+            background-color: var(--primary-bg);
+            border-radius: var(--card-border-radius);
+            overflow: hidden;
         }
 
         .video-wrapper {
-            position: relative;
+            position: absolute;
+            inset: 0;
             background-color: var(--primary-bg);
-            border-radius: var(--button-border-radius);
+            border-radius: var(--card-border-radius);
             overflow: hidden;
-            aspect-ratio: 16/9;
+            transition: all 0.5s ease;
         }
 
         .video-wrapper video {
@@ -302,43 +305,93 @@
             object-fit: cover;
         }
 
-        .video-wrapper p {
+        .video-wrapper.thumbnail {
+            inset: auto;
+            bottom: 1rem;
+            right: 1rem;
+            width: 25%;
+            min-width: 150px;
+            aspect-ratio: 16/9;
+            z-index: 10;
+            border: 2px solid var(--border-color);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .video-overlay {
             position: absolute;
-            bottom: 8px;
-            left: 10px;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 0.75rem;
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.6) 0%, transparent 40%);
+        }
+
+        .video-label {
             color: white;
-            background: rgba(0, 0, 0, 0.6);
-            padding: 3px 9px;
-            border-radius: 8px;
             font-size: 0.8rem;
             font-weight: 500;
         }
 
-        .video-wrapper.loading .skeleton {
-            width: 100%;
-            height: 100%;
-            background: var(--tertiary-bg);
+        .video-controls {
+            display: flex;
+            gap: 0.5rem;
+            opacity: 0;
+            transition: var(--transition-fast);
         }
 
-        .call-controls {
+        .video-wrapper:hover .video-controls {
+            opacity: 1;
+        }
+
+        .video-controls button {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(5px);
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .remote-audio-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .remote-audio-controls input[type="range"] {
+            flex: 1;
+            accent-color: white;
+        }
+
+        .call-controls-main {
             display: flex;
             justify-content: center;
             gap: 1rem;
             flex-wrap: wrap;
             margin-top: 1.5rem;
+            padding: 0.75rem;
+            background-color: var(--secondary-bg);
+            border-radius: 50px;
         }
 
-        .call-controls button {
+        .call-controls-main button {
             border-radius: 50px;
             padding: 0.7rem 1.4rem;
+            background-color: var(--tertiary-bg);
+            color: var(--primary-text);
         }
 
-        .call-controls button.danger {
+        .call-controls-main button.active {
+            background-color: var(--primary-accent);
+            color: black;
+        }
+
+        .call-controls-main button.danger {
             background-color: var(--error);
-        }
-
-        .call-controls button.danger:hover:not(:disabled) {
-            box-shadow: 0 4px 12px rgba(255, 59, 48, 0.3);
+            color: white;
         }
 
         .chat-sidebar {
@@ -405,10 +458,8 @@
         }
 
         @media (max-width: 992px) {
-            .setup-container {
-                grid-template-columns: 1fr;
-            }
 
+            .setup-container,
             .call-container {
                 grid-template-columns: 1fr;
             }
@@ -423,22 +474,20 @@
                 padding: 1.5rem 1rem;
             }
 
-            .video-grid {
-                grid-template-columns: 1fr;
-            }
-
             .card {
                 padding: 1.25rem;
+            }
+
+            .video-wrapper.thumbnail {
+                min-width: 120px;
             }
         }
     </style>
 </head>
 
 <body>
-    <div class="theme-switcher" id="theme-switcher" title="Toggle Theme">
-        <i class="fa-solid fa-sun sun-icon"></i>
-        <i class="fa-solid fa-moon moon-icon"></i>
-    </div>
+    <div class="theme-switcher" id="theme-switcher" title="Toggle Theme"><i class="fa-solid fa-sun sun-icon"></i><i
+            class="fa-solid fa-moon moon-icon"></i></div>
 
     <div class="main-content-wrapper">
         <header class="hero-header">
@@ -453,30 +502,26 @@
                     <div class="form-group">
                         <label for="username-input">Display Name</label>
                         <div class="input-group">
-                            <input type="text" id="username-input" placeholder="Enter your name...">
-                            <button id="save-username-btn" title="Save Name" class="secondary"><i
+                            <input type="text" id="username-input" placeholder="Enter your name..."><button
+                                id="save-username-btn" title="Save Name" class="secondary"><i
                                     class="fa-solid fa-save"></i></button>
                         </div>
                     </div>
                     <div class="form-group">
                         <label for="my-id">Your Unique ID</label>
                         <div class="input-group">
-                            <input type="text" id="my-id" readonly>
-                            <button id="copy-id-btn" title="Copy ID" class="secondary"><i
-                                    class="fa-solid fa-copy"></i></button>
-                            <button id="renew-id-btn" title="Generate New ID" class="secondary"><i
+                            <input type="text" id="my-id" readonly><button id="copy-id-btn" title="Copy ID"
+                                class="secondary"><i class="fa-solid fa-copy"></i></button><button id="renew-id-btn"
+                                title="Generate New ID" class="secondary"><i
                                     class="fa-solid fa-arrows-rotate"></i></button>
                         </div>
                     </div>
                 </div>
-
                 <div class="setup-card card">
                     <h2>Connect to a Peer</h2>
-                    <div class="form-group">
-                        <label for="remote-id-input">Peer's Unique ID</label>
-                        <div class="input-group">
-                            <input type="text" id="remote-id-input" placeholder="Paste peer's ID here...">
-                        </div>
+                    <div class="form-group"><label for="remote-id-input">Peer's Unique ID</label>
+                        <div class="input-group"><input type="text" id="remote-id-input"
+                                placeholder="Paste peer's ID here..."></div>
                     </div>
                     <button id="join-btn">Connect</button>
                 </div>
@@ -488,20 +533,36 @@
             <div class="call-container">
                 <div class="video-main card">
                     <h2>Communication Dashboard</h2>
-                    <div class="video-grid">
-                        <div class="video-wrapper"><video id="local-video" autoplay muted></video>
-                            <p>You</p>
+                    <div class="video-area">
+                        <div id="remote-video-wrapper" class="video-wrapper">
+                            <div class="skeleton"></div>
+                            <video id="remote-video" autoplay></video>
+                            <div class="video-overlay">
+                                <div class="video-controls"><button id="expand-remote-btn" title="Toggle Focus View"><i
+                                            class="fa-solid fa-expand"></i></button></div>
+                                <div class="remote-audio-controls">
+                                    <button id="remote-mute-btn"><i class="fa-solid fa-volume-high"></i></button>
+                                    <input type="range" id="remote-volume-slider" min="0" max="1" step="0.05" value="1">
+                                    <span class="video-label">Peer</span>
+                                </div>
+                            </div>
                         </div>
-                        <div class="video-wrapper loading">
-                            <div class="skeleton"></div><video id="remote-video" autoplay></video>
-                            <p>Peer</p>
+                        <div id="local-video-wrapper" class="video-wrapper thumbnail">
+                            <video id="local-video" autoplay muted></video>
+                            <div class="video-overlay">
+                                <div class="video-controls"><button id="expand-local-btn" title="Toggle Focus View"><i
+                                            class="fa-solid fa-expand"></i></button></div>
+                                <span class="video-label">You</span>
+                            </div>
                         </div>
                     </div>
-                    <div class="call-controls">
-                        <button id="start-call-btn"><i class="fa-solid fa-video"></i> Video Call</button>
-                        <button id="share-screen-btn"><i class="fa-solid fa-display"></i> Share Screen</button>
-                        <button id="stop-call-btn" class="danger"><i class="fa-solid fa-phone-slash"></i> End</button>
-                        <button id="leave-btn" class="danger"><i class="fa-solid fa-door-open"></i> Leave</button>
+                    <div class="call-controls-main">
+                        <button id="mute-btn" title="Mute/Unmute"><i class="fa-solid fa-microphone"></i></button>
+                        <button id="toggle-video-btn" title="Disable/Enable Camera" class="active"><i
+                                class="fa-solid fa-video"></i></button>
+                        <button id="share-screen-btn" title="Share Screen"><i class="fa-solid fa-display"></i></button>
+                        <button id="stop-call-btn" title="End Call & Go Back" class="danger"><i
+                                class="fa-solid fa-phone-slash"></i> Leave</button>
                     </div>
                 </div>
                 <div id="chat-container" class="chat-sidebar card loading">
@@ -523,337 +584,127 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            const ls = {
-                get: (key, fallback) => { try { return localStorage.getItem(key) || fallback; } catch (e) { return fallback; } },
-                set: (key, value) => { try { localStorage.setItem(key, value); } catch (e) { } },
-                getJSON: (key, fallback) => JSON.parse(ls.get(key, JSON.stringify(fallback))),
-                setJSON: (key, value) => ls.set(key, JSON.stringify(value))
-            };
-
+            const ls = { get: (k, f) => { try { return localStorage.getItem(k) || f; } catch (e) { return f; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) { } }, getJSON: (k, f) => JSON.parse(ls.get(k, JSON.stringify(f))), setJSON: (k, v) => ls.set(k, JSON.stringify(v)) };
             const ui = {
-                setupSection: document.getElementById('setup-section'),
-                callSection: document.getElementById('call-section'),
-                myIdInput: document.getElementById('my-id'),
-                usernameInput: document.getElementById('username-input'),
-                remoteIdInput: document.getElementById('remote-id-input'),
-                saveUsernameBtn: document.getElementById('save-username-btn'),
-                renewIdBtn: document.getElementById('renew-id-btn'),
-                copyIdBtn: document.getElementById('copy-id-btn'),
-                joinBtn: document.getElementById('join-btn'),
-                leaveBtn: document.getElementById('leave-btn'),
-                startCallBtn: document.getElementById('start-call-btn'),
-                shareScreenBtn: document.getElementById('share-screen-btn'),
-                stopCallBtn: document.getElementById('stop-call-btn'),
-                localVideo: document.getElementById('local-video'),
-                remoteVideo: document.getElementById('remote-video'),
-                remoteVideoWrapper: document.querySelector('#remote-video').parentElement,
-                messagesDiv: document.getElementById('messages'),
-                messageForm: document.getElementById('message-form'),
-                messageInput: document.getElementById('message-input'),
-                messageSubmitBtn: document.querySelector('#message-form button'),
-                chatContainer: document.getElementById('chat-container'),
-                statusDiv: document.getElementById('status'),
-                themeSwitcher: document.getElementById('theme-switcher'),
+                setupSection: document.getElementById('setup-section'), callSection: document.getElementById('call-section'), myIdInput: document.getElementById('my-id'), usernameInput: document.getElementById('username-input'), remoteIdInput: document.getElementById('remote-id-input'), saveUsernameBtn: document.getElementById('save-username-btn'), renewIdBtn: document.getElementById('renew-id-btn'), copyIdBtn: document.getElementById('copy-id-btn'), joinBtn: document.getElementById('join-btn'), localVideo: document.getElementById('local-video'), remoteVideo: document.getElementById('remote-video'), localVideoWrapper: document.getElementById('local-video-wrapper'), remoteVideoWrapper: document.getElementById('remote-video-wrapper'), expandLocalBtn: document.getElementById('expand-local-btn'), expandRemoteBtn: document.getElementById('expand-remote-btn'), muteBtn: document.getElementById('mute-btn'), toggleVideoBtn: document.getElementById('toggle-video-btn'), shareScreenBtn: document.getElementById('share-screen-btn'), stopCallBtn: document.getElementById('stop-call-btn'), remoteMuteBtn: document.getElementById('remote-mute-btn'), remoteVolumeSlider: document.getElementById('remote-volume-slider'), messagesDiv: document.getElementById('messages'), messageForm: document.getElementById('message-form'), messageInput: document.getElementById('message-input'), messageSubmitBtn: document.querySelector('#message-form button'), chatContainer: document.getElementById('chat-container'), statusDiv: document.getElementById('status'), themeSwitcher: document.getElementById('theme-switcher'),
             };
-
             let peer, localStream, dataConnection, mediaConnection, connectionTimeout;
-            let state = { username: ls.get('username', 'User'), currentRoomId: null };
-
+            let state = { username: ls.get('username', 'User'), currentRoomId: null, isMuted: false, isVideoEnabled: true };
             const log = (...args) => console.log('[P2P DEBUG]', ...args);
-
-            const updateStatus = (message, type = 'info') => {
-                ui.statusDiv.textContent = message;
-                const colorMap = { error: 'var(--error)', success: 'var(--success)' };
-                ui.statusDiv.style.color = colorMap[type] || 'var(--secondary-text)';
-            };
-
-            const showCallUI = (show) => {
-                ui.setupSection.classList.toggle('hidden', show);
-                ui.callSection.classList.toggle('hidden', !show);
-            };
-
-            const setChatLoading = (isLoading) => {
-                ui.chatContainer.classList.toggle('loading', isLoading);
-                ui.messageInput.disabled = isLoading;
-                ui.messageSubmitBtn.disabled = isLoading;
-                if (!isLoading) {
-                    ui.messagesDiv.innerHTML = '';
-                }
-            };
-
-            const setRemoteVideoLoading = (isLoading) => {
-                ui.remoteVideoWrapper.classList.toggle('loading', isLoading);
-            };
+            const updateStatus = (message, type = 'info') => { ui.statusDiv.textContent = message; const c = { error: 'var(--error)', success: 'var(--success)' }; ui.statusDiv.style.color = c[type] || 'var(--secondary-text)'; };
+            const showCallUI = (show) => { ui.setupSection.classList.toggle('hidden', show); ui.callSection.classList.toggle('hidden', !show); };
+            const setChatLoading = (isLoading) => { ui.chatContainer.classList.toggle('loading', isLoading); ui.messageInput.disabled = isLoading; ui.messageSubmitBtn.disabled = isLoading; if (!isLoading) ui.messagesDiv.innerHTML = ''; };
 
             const initializePeer = (forceNew = false) => {
-                log('Initializing Peer instance...');
-                updateStatus('Initializing Peer...');
-                if (peer) peer.destroy();
-                const peerId = forceNew ? null : ls.get('myPeerId', null);
-
-                // *** THIS IS THE FIX ***
-                // We add a configuration with public STUN and TURN servers
-                // This will act as a relay if a direct P2P connection fails
-                const peerConfig = {
-                    config: {
-                        'iceServers': [
-                            { urls: 'stun:stun.l.google.com:19302' },
-                            { urls: 'stun:stun1.l.google.com:19302' },
-                            // The following are public TURN servers. For a real application,
-                            // you would host your own TURN server.
-                            {
-                                urls: "turn:openrelay.metered.ca:80",
-                                username: "openrelayproject",
-                                credential: "openrelayproject",
-                            },
-                            {
-                                urls: "turn:openrelay.metered.ca:443",
-                                username: "openrelayproject",
-                                credential: "openrelayproject",
-                            }
-                        ]
-                    }
-                };
-
+                log('Initializing Peer instance...'); updateStatus('Initializing Peer...'); if (peer) peer.destroy(); const peerId = forceNew ? null : ls.get('myPeerId', null);
+                const peerConfig = { config: { 'iceServers': [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }, { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" }, { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" }] } };
                 peer = peerId ? new Peer(peerId, peerConfig) : new Peer(peerConfig);
-
-                peer.on('open', id => {
-                    log('PeerJS connection to server established. My ID:', id);
-                    ls.set('myPeerId', id);
-                    ui.myIdInput.value = id;
-                    updateStatus('Peer active. Ready to connect.', 'success');
-                });
-                peer.on('connection', conn => {
-                    log('Incoming data connection request from:', conn.peer);
-                    updateStatus(`Receiving connection from ${conn.peer}...`);
-                    setupDataConnection(conn);
-                });
-                peer.on('call', call => {
-                    log('Incoming media call request from:', call.peer);
-                    updateStatus(`Incoming call from ${call.peer}...`);
-                    handleIncomingCall(call);
-                });
-                peer.on('disconnected', () => {
-                    log('Peer disconnected from signaling server. Attempting to reconnect...');
-                    updateStatus('Reconnecting to signaling server...');
-                    setTimeout(() => peer.reconnect(), 3000);
-                });
-                peer.on('error', err => {
-                    log('PEERJS ERROR:', err);
-                    updateStatus(`${err.message}`, 'error');
-                    if (err.type === 'unavailable-id') {
-                        log('Peer ID was unavailable, requesting a new one.');
-                        initializePeer(true);
-                    }
-                });
+                peer.on('open', id => { log('PeerJS connection to server established. My ID:', id); ls.set('myPeerId', id); ui.myIdInput.value = id; updateStatus('Peer active. Ready to connect.', 'success'); });
+                peer.on('connection', conn => { log('Incoming data connection request from:', conn.peer); updateStatus(`Receiving connection from ${conn.peer}...`); setupDataConnection(conn); });
+                peer.on('call', call => { log('Incoming media call request from:', call.peer); updateStatus(`Incoming call from ${call.peer}...`); handleIncomingCall(call); });
+                peer.on('disconnected', () => { log('Peer disconnected from signaling server.'); updateStatus('Reconnecting to signaling server...'); setTimeout(() => peer.reconnect(), 3000); });
+                peer.on('error', err => { log('PEERJS ERROR:', err); updateStatus(`${err.message}`, 'error'); if (err.type === 'unavailable-id') { log('Peer ID was unavailable, requesting a new one.'); initializePeer(true); } });
             };
 
             const connectToPeer = (remoteId) => {
                 if (!remoteId || !peer) return updateStatus('Please enter a valid peer ID.', 'error');
-                if (remoteId === peer.id) {
-                    log('Self-connection attempt detected. Aborting.');
-                    return updateStatus("You can't connect to your own ID. Please use a different peer's ID.", 'error');
-                }
-
-                log(`Attempting to connect to peer: ${remoteId}`);
-                leaveRoom(false);
-                updateStatus(`Connecting to ${remoteId}...`);
-
+                if (remoteId === peer.id) return updateStatus("You can't connect to your own ID.", 'error');
+                log(`Attempting to connect to peer: ${remoteId}`); leaveRoom(false); updateStatus(`Connecting to ${remoteId}...`);
                 const conn = peer.connect(remoteId, { reliable: true });
-
-                clearTimeout(connectionTimeout);
-                connectionTimeout = setTimeout(() => {
-                    log('Connection timed out.');
-                    updateStatus('Connection timed out. Check network or try again.', 'error');
-                    conn.close();
-                }, 15000);
-
+                clearTimeout(connectionTimeout); connectionTimeout = setTimeout(() => { log('Connection timed out.'); updateStatus('Connection timed out. Peer may be offline or behind a firewall.', 'error'); conn.close(); }, 15000);
                 setupDataConnection(conn);
             };
 
             const setupDataConnection = (conn) => {
-                log('Setting up data connection listeners for peer:', conn.peer);
                 dataConnection = conn;
-                dataConnection.on('open', () => {
-                    log('Data connection established with:', dataConnection.peer);
-                    clearTimeout(connectionTimeout);
-                    state.currentRoomId = dataConnection.peer;
-                    ls.set('currentRoomId', state.currentRoomId);
-                    updateStatus(`Connected to peer!`, 'success');
-                    showCallUI(true);
-                    setChatLoading(false);
-                    loadChatHistory();
-                });
-                dataConnection.on('data', data => {
-                    log('Received data:', data);
-                    handleIncomingMessage(data);
-                });
-                dataConnection.on('close', () => {
-                    log('Data connection closed by peer.');
-                    leaveRoom(true)
-                });
+                dataConnection.on('open', () => { log('Data connection established with:', dataConnection.peer); clearTimeout(connectionTimeout); state.currentRoomId = dataConnection.peer; ls.set('currentRoomId', state.currentRoomId); updateStatus(`Connected to peer!`, 'success'); showCallUI(true); setChatLoading(false); loadChatHistory(); startCall(false); });
+                dataConnection.on('data', data => { log('Received data:', data); handleIncomingMessage(data); });
+                dataConnection.on('close', () => { log('Data connection closed by peer.'); leaveRoom(true) });
                 dataConnection.on('error', err => log('DATA CONNECTION ERROR:', err));
             };
 
             const setupMediaConnection = (call) => {
-                log('Setting up media connection listeners for peer:', call.peer);
                 mediaConnection = call;
-                mediaConnection.on('stream', stream => {
-                    log('Received remote media stream.');
-                    ui.remoteVideo.srcObject = stream;
-                    setRemoteVideoLoading(false);
-                    ui.remoteVideo.play();
-                });
-                mediaConnection.on('close', () => {
-                    log('Media connection closed by peer.');
-                    stopCall();
-                });
+                mediaConnection.on('stream', stream => { log('Received remote media stream.'); ui.remoteVideo.srcObject = stream; });
+                mediaConnection.on('close', () => { log('Media connection closed.'); ui.remoteVideo.srcObject = null; });
                 mediaConnection.on('error', err => log('MEDIA CONNECTION ERROR:', err));
             };
 
             const handleIncomingCall = (call) => {
-                log('Answering incoming call.');
-                startLocalStream().then(() => {
-                    if (localStream) {
-                        call.answer(localStream);
-                        setupMediaConnection(call);
-                    }
-                });
+                log('Answering incoming call.'); updateStatus('Answering call...');
+                if (!localStream) { startLocalStream(false).then(() => { if (localStream) { call.answer(localStream); setupMediaConnection(call); } }); } else { call.answer(localStream); setupMediaConnection(call); }
             };
 
             const startLocalStream = async (isScreenShare = false) => {
                 log(`Requesting local media stream. Screen share: ${isScreenShare}`);
                 try {
-                    if (localStream) localStream.getTracks().forEach(track => track.stop());
+                    if (localStream) { localStream.getTracks().forEach(track => track.stop()); }
                     const constraints = { video: true, audio: true };
-                    localStream = isScreenShare
-                        ? await navigator.mediaDevices.getDisplayMedia(constraints)
-                        : await navigator.mediaDevices.getUserMedia(constraints);
+                    localStream = isScreenShare ? await navigator.mediaDevices.getDisplayMedia(constraints) : await navigator.mediaDevices.getUserMedia(constraints);
                     ui.localVideo.srcObject = localStream;
+                    if (isScreenShare) {
+                        localStream.getVideoTracks()[0].onended = () => { log('Screen share ended by user.'); ui.shareScreenBtn.classList.remove('active'); startCall(false); };
+                    }
+                    updateLocalMediaState();
                     log('Successfully acquired local stream.');
                     return localStream;
-                } catch (err) {
-                    log('Error getting local stream:', err);
-                    updateStatus('Could not access camera/mic. Check browser permissions.', 'error');
-                }
+                } catch (err) { log('Error getting local stream:', err); updateStatus('Could not access camera/mic.', 'error'); }
             };
 
             const startCall = async (isScreenShare) => {
-                if (!state.currentRoomId) return;
-                log('Initiating a call...');
                 await startLocalStream(isScreenShare);
-                if (localStream && peer) {
-                    if (mediaConnection) mediaConnection.close();
-                    setRemoteVideoLoading(true);
+                if (localStream && peer && state.currentRoomId) {
                     log(`Calling peer: ${state.currentRoomId}`);
+                    if (mediaConnection) mediaConnection.close();
                     const call = peer.call(state.currentRoomId, localStream);
                     setupMediaConnection(call);
                 }
             };
 
-            const stopCall = () => {
-                log('Stopping call and cleaning up media streams.');
-                if (mediaConnection) { mediaConnection.close(); mediaConnection = null; }
-                if (localStream) { localStream.getTracks().forEach(track => track.stop()); localStream = null; }
-                ui.localVideo.srcObject = null;
-                ui.remoteVideo.srcObject = null;
-                setRemoteVideoLoading(true);
-            };
-
             const leaveRoom = (wasDisconnected = false) => {
                 log(`Leaving room. Was disconnected: ${wasDisconnected}`);
-                stopCall();
+                if (localStream) { localStream.getTracks().forEach(track => track.stop()); localStream = null; }
                 if (dataConnection) { dataConnection.close(); dataConnection = null; }
-                state.currentRoomId = null;
-                ls.set('currentRoomId', '');
-                ui.remoteIdInput.value = '';
-                showCallUI(false);
-                setChatLoading(true);
-                if (wasDisconnected) {
-                    updateStatus("Peer has disconnected.", "error");
-                } else {
-                    updateStatus("You have left the room.");
-                }
+                state.currentRoomId = null; ls.set('currentRoomId', ''); ui.remoteIdInput.value = '';
+                showCallUI(false); setChatLoading(true);
+                if (wasDisconnected) { updateStatus("Peer has disconnected.", "error"); } else { updateStatus("You have left the room."); }
+            };
+
+            const updateLocalMediaState = () => {
+                if (!localStream) return;
+                localStream.getAudioTracks().forEach(track => track.enabled = !state.isMuted);
+                localStream.getVideoTracks().forEach(track => track.enabled = state.isVideoEnabled);
             };
 
             const getChatHistoryKey = () => `chatHistory_${peer?.id}_${state.currentRoomId}`;
-            const loadChatHistory = () => {
-                ui.messagesDiv.innerHTML = '';
-                const history = ls.getJSON(getChatHistoryKey(), []);
-                history.forEach(msg => addMessageToUI(msg.sender, msg.text));
-            };
-            const saveMessageToHistory = (sender, text) => {
-                const history = ls.getJSON(getChatHistoryKey(), []);
-                history.push({ sender, text, timestamp: Date.now() });
-                ls.setJSON(getChatHistoryKey(), history);
-            };
-            const addMessageToUI = (sender, text) => {
-                const p = document.createElement('p');
-                p.innerHTML = `<strong>${sender}:</strong> ${text}`;
-                ui.messagesDiv.appendChild(p);
-                ui.messagesDiv.scrollTop = ui.messagesDiv.scrollHeight;
-            };
-            const handleIncomingMessage = (data) => {
-                addMessageToUI(data.sender, data.text);
-                saveMessageToHistory(data.sender, data.text);
-            };
-            const sendMessage = () => {
-                const text = ui.messageInput.value.trim();
-                if (text && dataConnection?.open) {
-                    const message = { sender: state.username, text };
-                    log('Sending message:', message);
-                    dataConnection.send(message);
-                    addMessageToUI('You', text);
-                    saveMessageToHistory('You', text);
-                    ui.messageInput.value = '';
-                }
-            };
-
-            const animateButton = (btn) => {
-                const originalIcon = btn.innerHTML;
-                btn.innerHTML = '<i class="fa-solid fa-check"></i>';
-                setTimeout(() => btn.innerHTML = originalIcon, 1500);
-            };
+            const loadChatHistory = () => { ui.messagesDiv.innerHTML = ''; ls.getJSON(getChatHistoryKey(), []).forEach(msg => addMessageToUI(msg.sender, msg.text)); };
+            const saveMessageToHistory = (sender, text) => { const h = ls.getJSON(getChatHistoryKey(), []); h.push({ sender, text, timestamp: Date.now() }); ls.setJSON(getChatHistoryKey(), h); };
+            const addMessageToUI = (sender, text) => { const p = document.createElement('p'); p.innerHTML = `<strong>${sender}:</strong> ${text}`; ui.messagesDiv.appendChild(p); ui.messagesDiv.scrollTop = ui.messagesDiv.scrollHeight; };
+            const handleIncomingMessage = (data) => { addMessageToUI(data.sender, data.text); saveMessageToHistory(data.sender, data.text); };
+            const sendMessage = () => { const text = ui.messageInput.value.trim(); if (text && dataConnection?.open) { const msg = { sender: state.username, text }; dataConnection.send(msg); addMessageToUI('You', text); saveMessageToHistory('You', text); ui.messageInput.value = ''; } };
 
             const setupEventListeners = () => {
-                ui.saveUsernameBtn.onclick = () => {
-                    state.username = ui.usernameInput.value.trim() || 'User';
-                    ls.set('username', state.username);
-                    animateButton(ui.saveUsernameBtn);
-                };
-                ui.copyIdBtn.onclick = () => {
-                    navigator.clipboard.writeText(ui.myIdInput.value);
-                    animateButton(ui.copyIdBtn);
-                };
+                ui.saveUsernameBtn.onclick = () => { state.username = ui.usernameInput.value.trim() || 'User'; ls.set('username', state.username); const i = ui.saveUsernameBtn.innerHTML; ui.saveUsernameBtn.innerHTML = '<i class="fa-solid fa-check"></i>'; setTimeout(() => ui.saveUsernameBtn.innerHTML = i, 1500); };
+                ui.copyIdBtn.onclick = () => { navigator.clipboard.writeText(ui.myIdInput.value); const i = ui.copyIdBtn.innerHTML; ui.copyIdBtn.innerHTML = '<i class="fa-solid fa-check"></i>'; setTimeout(() => ui.copyIdBtn.innerHTML = i, 1500); };
                 ui.renewIdBtn.onclick = () => initializePeer(true);
                 ui.joinBtn.onclick = () => connectToPeer(ui.remoteIdInput.value.trim());
-                ui.leaveBtn.onclick = () => leaveRoom(false);
-                ui.startCallBtn.onclick = () => startCall(false);
-                ui.shareScreenBtn.onclick = () => startCall(true);
-                ui.stopCallBtn.onclick = stopCall;
+                ui.stopCallBtn.onclick = () => leaveRoom(false);
+                ui.shareScreenBtn.onclick = () => { const isActive = ui.shareScreenBtn.classList.toggle('active'); startCall(isActive); if (!isActive && localStream) startCall(false); };
+                ui.muteBtn.onclick = () => { state.isMuted = !state.isMuted; updateLocalMediaState(); ui.muteBtn.classList.toggle('danger', state.isMuted); ui.muteBtn.innerHTML = state.isMuted ? '<i class="fa-solid fa-microphone-slash"></i>' : '<i class="fa-solid fa-microphone"></i>'; };
+                ui.toggleVideoBtn.onclick = () => { state.isVideoEnabled = !state.isVideoEnabled; updateLocalMediaState(); ui.toggleVideoBtn.classList.toggle('active', state.isVideoEnabled); };
+                ui.expandLocalBtn.onclick = () => { ui.localVideoWrapper.classList.remove('thumbnail'); ui.remoteVideoWrapper.classList.add('thumbnail'); };
+                ui.expandRemoteBtn.onclick = () => { ui.remoteVideoWrapper.classList.remove('thumbnail'); ui.localVideoWrapper.classList.add('thumbnail'); };
+                ui.remoteVolumeSlider.oninput = (e) => { ui.remoteVideo.volume = e.target.value; ui.remoteVideo.muted = e.target.value == 0; };
+                ui.remoteMuteBtn.onclick = () => { ui.remoteVideo.muted = !ui.remoteVideo.muted; ui.remoteMuteBtn.innerHTML = ui.remoteVideo.muted ? '<i class="fa-solid fa-volume-xmark"></i>' : '<i class="fa-solid fa-volume-high"></i>'; if (!ui.remoteVideo.muted) ui.remoteVolumeSlider.value = ui.remoteVideo.volume > 0 ? ui.remoteVideo.volume : 0.5; };
                 ui.messageForm.onsubmit = e => { e.preventDefault(); sendMessage(); };
+                let currentTheme = ls.get('theme', 'dark'); document.body.classList.toggle('light-theme', currentTheme === 'light'); ui.themeSwitcher.onclick = () => { currentTheme = currentTheme === 'light' ? 'dark' : 'light'; ls.set('theme', currentTheme); document.body.classList.toggle('light-theme', currentTheme === 'light'); };
             };
 
-            const setupTheme = () => {
-                let currentTheme = ls.get('theme', 'dark');
-                const applyTheme = (theme) => document.body.classList.toggle('light-theme', theme === 'light');
-                applyTheme(currentTheme);
-                ui.themeSwitcher.onclick = () => {
-                    currentTheme = currentTheme === 'light' ? 'dark' : 'light';
-                    ls.set('theme', currentTheme);
-                    applyTheme(currentTheme);
-                };
-            };
-
-            setupTheme();
             setupEventListeners();
             ui.usernameInput.value = state.username;
             initializePeer();
             const lastRoomId = ls.get('currentRoomId', null);
-            if (lastRoomId) {
-                ui.remoteIdInput.value = lastRoomId;
-                updateStatus("Reconnect to your last peer if they are online.");
-            }
+            if (lastRoomId) { ui.remoteIdInput.value = lastRoomId; updateStatus("Reconnect to your last peer if they are online."); }
         });
     </script>
 </body>
