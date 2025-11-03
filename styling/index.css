@@ -9,7 +9,7 @@
     --border-color: #1e1f22;
     --success: #ffffff;
     --error: #f23f42;
-    --card-border-radius: 8px;
+    --card-border-radius: 15px;
     --button-border-radius: 15px;
     --circle-border-radius: 1000px;
     --transition-fast: all 0.15s ease;
@@ -134,20 +134,29 @@ button {
     cursor: pointer;
     transition: var(--transition-fast);
     -webkit-tap-highlight-color: transparent;
+    width: 25%;
 }
 
 button.secondary {
     background-color: #4e5058;
 }
 
+#join-btn {
+    margin-top: 20px;
+}
+
 #status {
+    display: flex;
+    justify-content: center;
+    align-items: center;
     text-align: center;
     font-weight: 500;
     min-height: 1.5rem;
-    margin-top: 20px;
+    margin: 20px auto;
     background-color: var(--secondary-bg);
     border-radius: var(--circle-border-radius);
     padding: 1rem;
+    max-width: 25vw;
 }
 
 #call-section {
@@ -460,6 +469,10 @@ button.secondary {
         padding-right: 1rem;
     }
 
+    #status {
+        max-width: 50vw;
+    }
+
     .main-content-wrapper {
         height: 100%;
         justify-content: center;
@@ -488,7 +501,11 @@ button.secondary {
     }
 
     #join-btn {
-        width: 100%;
+        margin-left: auto;
+        margin-right: auto;
+        display: flex;
+        justify-content: center;
+        width: 50%;
     }
 
     .video-main {
