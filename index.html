@@ -6,32 +6,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>P2P Communicator</title>
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css" rel="stylesheet">
     <style>
         :root {
-            --primary-accent: #ffffff;
-            --primary-accent-rgb: 0, 122, 255;
-            --primary-bg: #030303;
-            --secondary-bg: #0f0f0f;
-            --tertiary-bg: #2c2c2e;
+            --primary-accent: #5865f2;
+            --primary-bg: #313338;
+            --secondary-bg: #2b2d31;
+            --tertiary-bg: #1e1f22;
             --primary-text: #ffffff;
-            --secondary-text: #8e8e93;
-            --border-color: rgba(255, 255, 255, 0.1);
-            --success: #34c759;
-            --error: #ff3b30;
-            --card-border-radius: 16px;
-            --button-border-radius: 12px;
-            --transition-fast: all 0.2s ease;
-            --transition-medium: all 0.4s ease;
-        }
-
-        body.light-theme {
-            --primary-bg: #f2f2f7;
-            --secondary-bg: #ffffff;
-            --tertiary-bg: #e5e5ea;
-            --primary-text: #000000;
-            --secondary-text: #636366;
-            --border-color: rgba(0, 0, 0, 0.1);
+            --secondary-text: #b5bac1;
+            --header-text: #f2f3f5;
+            --border-color: #1e1f22;
+            --success: #2dc770;
+            --error: #f23f42;
+            --card-border-radius: 8px;
+            --button-border-radius: 6px;
+            --transition-fast: all 0.15s ease;
+            --transition-medium: all 0.3s ease;
         }
 
         *,
@@ -47,69 +38,17 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            font-family: 'gg sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
             background-color: var(--primary-bg);
             color: var(--primary-text);
             display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            min-height: 100vh;
-            padding: 2.5rem 1.5rem;
-            transition: var(--transition-medium);
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-        }
-
-        .theme-switcher {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            width: 44px;
-            height: 44px;
-            background-color: var(--secondary-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 50%;
-            cursor: pointer;
-            display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
-            z-index: 1000;
-            overflow: hidden;
-            transition: var(--transition-fast);
-        }
-
-        .theme-switcher:hover {
-            transform: scale(1.05);
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-        }
-
-        .theme-switcher .sun-icon,
-        .theme-switcher .moon-icon {
-            font-size: 18px;
-            position: absolute;
-            transition: transform 0.4s ease, opacity 0.4s ease;
-        }
-
-        .theme-switcher .sun-icon {
-            color: #f39c12;
-            transform: translateY(-150%);
-            opacity: 0;
-        }
-
-        .theme-switcher .moon-icon {
-            color: #f1c40f;
-            transform: translateY(0);
-            opacity: 1;
-        }
-
-        body.light-theme .theme-switcher .sun-icon {
-            transform: translateY(0);
-            opacity: 1;
-        }
-
-        body.light-theme .theme-switcher .moon-icon {
-            transform: translateY(150%);
-            opacity: 0;
+            min-height: 100vh;
+            padding: 2rem 1.5rem;
+            transition: var(--transition-medium);
+            -webkit-font-smoothing: antialiased;
         }
 
         .hidden {
@@ -118,7 +57,7 @@
 
         .main-content-wrapper {
             width: 100%;
-            max-width: 1100px;
+            max-width: 1400px;
             display: flex;
             flex-direction: column;
             gap: 2rem;
@@ -127,7 +66,7 @@
         @keyframes fadeInUp {
             from {
                 opacity: 0;
-                transform: translateY(20px);
+                transform: translateY(15px);
             }
 
             to {
@@ -138,20 +77,21 @@
 
         .hero-header {
             text-align: center;
-            animation: fadeInUp 0.6s ease-out both;
+            animation: fadeInUp 0.5s ease-out both;
         }
 
         .hero-header h1 {
-            font-size: clamp(2rem, 5vw, 3rem);
+            font-size: clamp(2rem, 5vw, 2.5rem);
             font-weight: 800;
-            letter-spacing: -1.5px;
+            letter-spacing: -1px;
             margin-bottom: 0.5rem;
+            color: var(--header-text);
         }
 
         .hero-header .subtitle {
-            font-size: clamp(1rem, 3vw, 1.15rem);
+            font-size: clamp(1rem, 3vw, 1.1rem);
             color: var(--secondary-text);
-            max-width: 480px;
+            max-width: 520px;
             margin: 0 auto;
             line-height: 1.6;
         }
@@ -161,19 +101,20 @@
             border: 1px solid var(--border-color);
             border-radius: var(--card-border-radius);
             padding: 1.75rem;
-            transition: var(--transition-fast);
         }
 
         .setup-container {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 1.5rem;
-            animation: fadeInUp 0.6s 0.2s ease-out both;
+            animation: fadeInUp 0.5s 0.2s ease-out both;
         }
 
         .setup-card h2 {
-            font-size: 1.2rem;
-            font-weight: 600;
+            font-size: 1.1rem;
+            text-transform: uppercase;
+            font-weight: 700;
+            color: var(--secondary-text);
             margin-bottom: 1.5rem;
         }
 
@@ -183,10 +124,11 @@
 
         .form-group label {
             display: block;
-            font-size: 0.9rem;
-            font-weight: 500;
+            font-size: 0.8rem;
+            font-weight: 600;
             color: var(--secondary-text);
             margin-bottom: 0.5rem;
+            text-transform: uppercase;
         }
 
         .input-group {
@@ -207,15 +149,8 @@
             transition: var(--transition-fast);
         }
 
-        input[type="text"]::placeholder {
-            color: var(--secondary-text);
-            opacity: 0.7;
-        }
-
         input[type="text"]:focus {
             border-color: var(--primary-accent);
-            background-color: var(--secondary-bg);
-            box-shadow: 0 0 0 3px rgba(var(--primary-accent-rgb), 0.2);
         }
 
         button {
@@ -224,7 +159,7 @@
             justify-content: center;
             gap: 0.6rem;
             background-color: var(--primary-accent);
-            color: black;
+            color: white;
             border: none;
             border-radius: var(--button-border-radius);
             font-size: 0.95rem;
@@ -234,20 +169,16 @@
             transition: var(--transition-fast);
         }
 
-        button.secondary {
-            background-color: var(--tertiary-bg);
-            color: var(--primary-text);
+        button:hover:not(:disabled) {
+            background-color: #4752c4;
         }
 
-        button:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(var(--primary-accent-rgb), 0.2);
+        button.secondary {
+            background-color: #4e5058;
         }
 
         button.secondary:hover:not(:disabled) {
-            background-color: #3a3a3c;
-            transform: none;
-            box-shadow: none;
+            background-color: #5d6069;
         }
 
         button:disabled {
@@ -264,230 +195,254 @@
             font-weight: 500;
             min-height: 1.5rem;
             transition: var(--transition-medium);
-            margin-top: 30px;
+            margin-top: 20px;
+            color: var(--secondary-text);
         }
 
         .call-container {
             display: grid;
             grid-template-columns: 1fr 360px;
-            gap: 1.5rem;
-            animation: fadeInUp 0.6s 0.2s ease-out both;
+            gap: 0;
+            background-color: var(--secondary-bg);
+            height: 85vh;
+            max-height: 900px;
+            border-radius: var(--card-border-radius);
+            overflow: hidden;
+            animation: fadeInUp 0.5s ease-out both;
+            transition: var(--transition-medium);
         }
 
-        .video-main h2,
-        .chat-sidebar h2 {
-            font-size: 1.2rem;
-            font-weight: 600;
-            margin-bottom: 1.5rem;
-        }
-
-        .video-area {
-            position: relative;
+        .call-container.fullscreen-mode {
+            position: fixed;
+            top: 0;
+            left: 0;
             width: 100%;
-            aspect-ratio: 16/9;
-            background-color: var(--primary-bg);
-            border-radius: var(--card-border-radius);
-            overflow: hidden;
+            height: 100%;
+            max-height: 100vh;
+            z-index: 1000;
+            border-radius: 0;
         }
 
-        .video-wrapper {
-            position: absolute;
-            inset: 0;
-            background-color: var(--primary-bg);
-            border-radius: var(--card-border-radius);
-            overflow: hidden;
-            transition: all 0.5s ease;
+        .video-main {
+            display: flex;
+            flex-direction: column;
+            background-color: var(--tertiary-bg);
+            position: relative;
         }
 
-        .video-wrapper video {
+        .video-grid {
+            flex-grow: 1;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 0.5rem;
+            padding: 0.5rem;
+            align-content: center;
+        }
+
+        .participant-tile {
+            position: relative;
+            background-color: #111;
+            border-radius: var(--card-border-radius);
+            overflow: hidden;
+            transition: var(--transition-medium);
+        }
+
+        .participant-tile video {
             width: 100%;
             height: 100%;
             object-fit: cover;
         }
 
-        .video-wrapper.thumbnail {
-            inset: auto;
-            bottom: 1rem;
-            right: 1rem;
-            width: 25%;
-            min-width: 150px;
-            aspect-ratio: 16/9;
-            z-index: 10;
-            border: 2px solid var(--border-color);
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-        }
-
-        .video-overlay {
+        .participant-tile .info-bar {
             position: absolute;
-            inset: 0;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            padding: 0.75rem;
-            background: linear-gradient(to top, rgba(0, 0, 0, 0.6) 0%, transparent 40%);
-        }
-
-        .video-label {
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 0.5rem;
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
             color: white;
-            font-size: 0.8rem;
-            font-weight: 500;
-        }
-
-        .video-controls {
-            display: flex;
-            gap: 0.5rem;
-            opacity: 0;
-            transition: var(--transition-fast);
-        }
-
-        .video-wrapper:hover .video-controls {
-            opacity: 1;
-        }
-
-        .video-controls button {
-            background: rgba(255, 255, 255, 0.2);
-            backdrop-filter: blur(5px);
-            border-radius: 50%;
-            width: 32px;
-            height: 32px;
-            padding: 0;
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .remote-audio-controls {
+            font-weight: 600;
             display: flex;
             align-items: center;
             gap: 0.5rem;
         }
 
-        .remote-audio-controls input[type="range"] {
-            flex: 1;
-            accent-color: white;
+        .participant-tile.screen-share {
+            grid-column: 1 / -1;
+            grid-row: 1 / -1;
         }
 
-        .call-controls-main {
-            display: flex;
-            justify-content: center;
-            gap: 1rem;
-            flex-wrap: wrap;
-            margin-top: 1.5rem;
+        .main-controls-bar {
             padding: 0.75rem;
             background-color: var(--secondary-bg);
-            border-radius: 50px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
-        .call-controls-main button {
-            border-radius: 50px;
-            padding: 0.7rem 1.4rem;
-            background-color: var(--tertiary-bg);
-            color: var(--primary-text);
+        .call-actions button {
+            background-color: #4e5058;
+            width: 44px;
+            height: 44px;
+            padding: 0;
+            border-radius: 50%;
+            font-size: 1.1rem;
         }
 
-        .call-controls-main button.active {
+        .call-actions button.active,
+        .call-actions button:hover {
             background-color: var(--primary-accent);
-            color: black;
         }
 
-        .call-controls-main button.danger {
+        .call-actions button.danger {
             background-color: var(--error);
-            color: white;
+        }
+
+        .call-actions button.danger:hover {
+            background-color: #d83639;
+        }
+
+        .room-info {
+            color: var(--secondary-text);
+            font-size: 0.9rem;
+        }
+
+        .fullscreen-toggle button {
+            background-color: transparent;
         }
 
         .chat-sidebar {
             display: flex;
             flex-direction: column;
-            max-height: 75vh;
+            background-color: var(--secondary-bg);
+            border-left: 1px solid var(--border-color);
+        }
+
+        .chat-header {
+            padding: 1.25rem;
+            font-weight: 700;
+            color: var(--header-text);
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
         }
 
         #messages {
             flex-grow: 1;
             overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 1.25rem;
-            padding-right: 0.5rem;
+            padding: 1.25rem;
         }
 
-        #messages p {
+        .message {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .message-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: var(--primary-accent);
+            flex-shrink: 0;
+        }
+
+        .message-content .header {
+            display: flex;
+            align-items: baseline;
+            gap: 0.75rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .message-content .username {
+            font-weight: 600;
+            color: var(--header-text);
+        }
+
+        .message-content .timestamp {
+            font-size: 0.75rem;
+            color: var(--secondary-text);
+        }
+
+        .message-content .text {
             line-height: 1.6;
             color: var(--secondary-text);
         }
 
-        #messages p strong {
-            color: var(--primary-text);
-            font-weight: 600;
-        }
-
         #message-form {
-            display: flex;
-            gap: 0.75rem;
-            margin-top: 1.5rem;
+            padding: 1.25rem;
+            flex-shrink: 0;
         }
 
-        .skeleton {
-            opacity: 0.7;
-            animation: skeleton-loading 1.5s infinite linear;
-            background-size: 200% 100%;
-            background-image: linear-gradient(90deg, var(--tertiary-bg) 25%, #3a3a3c 50%, var(--tertiary-bg) 75%);
-        }
-
-        @keyframes skeleton-loading {
-            0% {
-                background-position: 200% 0;
-            }
-
-            100% {
-                background-position: -200% 0;
-            }
-        }
-
-        .skeleton-text {
+        #message-form input {
             width: 100%;
-            height: 20px;
-            border-radius: 6px;
-            margin-bottom: 10px;
+            background-color: #383a40;
         }
 
-        .skeleton-text.short {
-            width: 40%;
+        #custom-context-menu {
+            position: fixed;
+            background: var(--tertiary-bg);
+            border-radius: var(--button-border-radius);
+            padding: 0.5rem;
+            z-index: 2000;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
         }
 
-        .chat-sidebar.loading #messages .skeleton-text:last-child {
-            margin-bottom: 0;
+        #volume-control-container {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        #volume-control-container input[type="range"] {
+            accent-color: var(--primary-accent);
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--tertiary-bg);
+            border-radius: 4px;
         }
 
         @media (max-width: 992px) {
+            .setup-container {
+                grid-template-columns: 1fr;
+            }
 
-            .setup-container,
             .call-container {
                 grid-template-columns: 1fr;
             }
 
             .chat-sidebar {
-                max-height: 400px;
-            }
-        }
-
-        @media (max-width: 640px) {
-            body {
-                padding: 1.5rem 1rem;
-            }
-
-            .card {
-                padding: 1.25rem;
+                position: fixed;
+                top: 0;
+                right: -100%;
+                width: 320px;
+                height: 100%;
+                z-index: 1001;
+                transition: right 0.3s ease;
             }
 
-            .video-wrapper.thumbnail {
-                min-width: 120px;
+            .chat-sidebar.open {
+                right: 0;
             }
         }
     </style>
 </head>
 
 <body>
-    <div class="theme-switcher" id="theme-switcher" title="Toggle Theme"><i class="fa-solid fa-sun sun-icon"></i><i
-            class="fa-solid fa-moon moon-icon"></i></div>
+    <div id="custom-context-menu" class="hidden">
+        <div id="volume-control-container">
+            <i class="fa-solid fa-volume-high"></i>
+            <input type="range" id="context-volume-slider" min="0" max="1" step="0.05" value="1">
+        </div>
+    </div>
 
     <div class="main-content-wrapper">
         <header class="hero-header">
@@ -499,22 +454,16 @@
             <div class="setup-container">
                 <div class="setup-card card">
                     <h2>Your Identity</h2>
-                    <div class="form-group">
-                        <label for="username-input">Display Name</label>
-                        <div class="input-group">
-                            <input type="text" id="username-input" placeholder="Enter your name..."><button
-                                id="save-username-btn" title="Save Name" class="secondary"><i
-                                    class="fa-solid fa-save"></i></button>
-                        </div>
+                    <div class="form-group"><label for="username-input">Display Name</label>
+                        <div class="input-group"><input type="text" id="username-input"
+                                placeholder="Enter your name..."><button id="save-username-btn" title="Save Name"
+                                class="secondary"><i class="fa-solid fa-check"></i></button></div>
                     </div>
-                    <div class="form-group">
-                        <label for="my-id">Your Unique ID</label>
-                        <div class="input-group">
-                            <input type="text" id="my-id" readonly><button id="copy-id-btn" title="Copy ID"
-                                class="secondary"><i class="fa-solid fa-copy"></i></button><button id="renew-id-btn"
-                                title="Generate New ID" class="secondary"><i
-                                    class="fa-solid fa-arrows-rotate"></i></button>
-                        </div>
+                    <div class="form-group"><label for="my-id">Your Unique ID</label>
+                        <div class="input-group"><input type="text" id="my-id" readonly><button id="copy-id-btn"
+                                title="Copy ID" class="secondary"><i class="fa-solid fa-copy"></i></button><button
+                                id="renew-id-btn" title="Generate New ID" class="secondary"><i
+                                    class="fa-solid fa-arrows-rotate"></i></button></div>
                     </div>
                 </div>
                 <div class="setup-card card">
@@ -530,53 +479,33 @@
         </section>
 
         <section id="call-section" class="hidden">
-            <div class="call-container">
-                <div class="video-main card">
-                    <h2>Communication Dashboard</h2>
-                    <div class="video-area">
-                        <div id="remote-video-wrapper" class="video-wrapper">
-                            <div class="skeleton"></div>
-                            <video id="remote-video" autoplay></video>
-                            <div class="video-overlay">
-                                <div class="video-controls"><button id="expand-remote-btn" title="Toggle Focus View"><i
-                                            class="fa-solid fa-expand"></i></button></div>
-                                <div class="remote-audio-controls">
-                                    <button id="remote-mute-btn"><i class="fa-solid fa-volume-high"></i></button>
-                                    <input type="range" id="remote-volume-slider" min="0" max="1" step="0.05" value="1">
-                                    <span class="video-label">Peer</span>
-                                </div>
-                            </div>
+            <div id="call-container" class="call-container">
+                <div class="video-main">
+                    <div id="video-grid" class="video-grid"></div>
+                    <div class="main-controls-bar">
+                        <div class="room-info">
+                            <p id="room-id-display"></p>
                         </div>
-                        <div id="local-video-wrapper" class="video-wrapper thumbnail">
-                            <video id="local-video" autoplay muted></video>
-                            <div class="video-overlay">
-                                <div class="video-controls"><button id="expand-local-btn" title="Toggle Focus View"><i
-                                            class="fa-solid fa-expand"></i></button></div>
-                                <span class="video-label">You</span>
-                            </div>
+                        <div class="call-actions">
+                            <button id="mute-btn" title="Mute/Unmute"><i class="fa-solid fa-microphone"></i></button>
+                            <button id="toggle-video-btn" title="Disable/Enable Camera" class="active"><i
+                                    class="fa-solid fa-video"></i></button>
+                            <button id="share-screen-btn" title="Share Screen"><i
+                                    class="fa-solid fa-display"></i></button>
+                            <button id="stop-call-btn" title="Leave Call" class="danger"><i
+                                    class="fa-solid fa-phone"></i></button>
                         </div>
-                    </div>
-                    <div class="call-controls-main">
-                        <button id="mute-btn" title="Mute/Unmute"><i class="fa-solid fa-microphone"></i></button>
-                        <button id="toggle-video-btn" title="Disable/Enable Camera" class="active"><i
-                                class="fa-solid fa-video"></i></button>
-                        <button id="share-screen-btn" title="Share Screen"><i class="fa-solid fa-display"></i></button>
-                        <button id="stop-call-btn" title="End Call & Go Back" class="danger"><i
-                                class="fa-solid fa-phone-slash"></i> Leave</button>
+                        <div class="fullscreen-toggle">
+                            <button id="fullscreen-btn" title="Enter Fullscreen"><i
+                                    class="fa-solid fa-expand"></i></button>
+                        </div>
                     </div>
                 </div>
-                <div id="chat-container" class="chat-sidebar card loading">
-                    <h2>Live Chat</h2>
-                    <div id="messages">
-                        <div class="skeleton-text"></div>
-                        <div class="skeleton-text short"></div>
-                        <div class="skeleton-text"></div>
-                    </div>
-                    <form id="message-form">
-                        <input type="text" id="message-input" placeholder="Type a message..." autocomplete="off"
-                            disabled>
-                        <button type="submit" title="Send" disabled><i class="fa-solid fa-paper-plane"></i></button>
-                    </form>
+                <div id="chat-sidebar" class="chat-sidebar">
+                    <div class="chat-header">Text Chat</div>
+                    <div id="messages"></div>
+                    <form id="message-form"><input type="text" id="message-input" placeholder="Send a message"
+                            autocomplete="off" disabled></form>
                 </div>
             </div>
         </section>
@@ -586,125 +515,228 @@
         document.addEventListener('DOMContentLoaded', () => {
             const ls = { get: (k, f) => { try { return localStorage.getItem(k) || f; } catch (e) { return f; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) { } }, getJSON: (k, f) => JSON.parse(ls.get(k, JSON.stringify(f))), setJSON: (k, v) => ls.set(k, JSON.stringify(v)) };
             const ui = {
-                setupSection: document.getElementById('setup-section'), callSection: document.getElementById('call-section'), myIdInput: document.getElementById('my-id'), usernameInput: document.getElementById('username-input'), remoteIdInput: document.getElementById('remote-id-input'), saveUsernameBtn: document.getElementById('save-username-btn'), renewIdBtn: document.getElementById('renew-id-btn'), copyIdBtn: document.getElementById('copy-id-btn'), joinBtn: document.getElementById('join-btn'), localVideo: document.getElementById('local-video'), remoteVideo: document.getElementById('remote-video'), localVideoWrapper: document.getElementById('local-video-wrapper'), remoteVideoWrapper: document.getElementById('remote-video-wrapper'), expandLocalBtn: document.getElementById('expand-local-btn'), expandRemoteBtn: document.getElementById('expand-remote-btn'), muteBtn: document.getElementById('mute-btn'), toggleVideoBtn: document.getElementById('toggle-video-btn'), shareScreenBtn: document.getElementById('share-screen-btn'), stopCallBtn: document.getElementById('stop-call-btn'), remoteMuteBtn: document.getElementById('remote-mute-btn'), remoteVolumeSlider: document.getElementById('remote-volume-slider'), messagesDiv: document.getElementById('messages'), messageForm: document.getElementById('message-form'), messageInput: document.getElementById('message-input'), messageSubmitBtn: document.querySelector('#message-form button'), chatContainer: document.getElementById('chat-container'), statusDiv: document.getElementById('status'), themeSwitcher: document.getElementById('theme-switcher'),
+                setupSection: document.getElementById('setup-section'), callSection: document.getElementById('call-section'), callContainer: document.getElementById('call-container'), myIdInput: document.getElementById('my-id'), usernameInput: document.getElementById('username-input'), remoteIdInput: document.getElementById('remote-id-input'), saveUsernameBtn: document.getElementById('save-username-btn'), renewIdBtn: document.getElementById('renew-id-btn'), copyIdBtn: document.getElementById('copy-id-btn'), joinBtn: document.getElementById('join-btn'), videoGrid: document.getElementById('video-grid'), muteBtn: document.getElementById('mute-btn'), toggleVideoBtn: document.getElementById('toggle-video-btn'), shareScreenBtn: document.getElementById('share-screen-btn'), stopCallBtn: document.getElementById('stop-call-btn'), fullscreenBtn: document.getElementById('fullscreen-btn'), roomIdDisplay: document.getElementById('room-id-display'), messagesDiv: document.getElementById('messages'), messageForm: document.getElementById('message-form'), messageInput: document.getElementById('message-input'), statusDiv: document.getElementById('status'), contextMenu: document.getElementById('custom-context-menu'), contextVolumeSlider: document.getElementById('context-volume-slider')
             };
-            let peer, localStream, dataConnection, mediaConnection, connectionTimeout;
-            let state = { username: ls.get('username', 'User'), currentRoomId: null, isMuted: false, isVideoEnabled: true };
+            let peer, dataConnection, connectionTimeout;
+            let localStream = null;
+            let peers = {};
+            let state = { username: ls.get('username', 'User'), isMuted: false, isVideoEnabled: true, isScreenSharing: false };
             const log = (...args) => console.log('[P2P DEBUG]', ...args);
+
             const updateStatus = (message, type = 'info') => { ui.statusDiv.textContent = message; const c = { error: 'var(--error)', success: 'var(--success)' }; ui.statusDiv.style.color = c[type] || 'var(--secondary-text)'; };
-            const showCallUI = (show) => { ui.setupSection.classList.toggle('hidden', show); ui.callSection.classList.toggle('hidden', !show); };
-            const setChatLoading = (isLoading) => { ui.chatContainer.classList.toggle('loading', isLoading); ui.messageInput.disabled = isLoading; ui.messageSubmitBtn.disabled = isLoading; if (!isLoading) ui.messagesDiv.innerHTML = ''; };
+            const showCallUI = (show) => { ui.setupSection.classList.toggle('hidden', show); ui.callSection.classList.toggle('hidden', !show); ui.heroHeader.classList.toggle('hidden', show); };
 
             const initializePeer = (forceNew = false) => {
-                log('Initializing Peer instance...'); updateStatus('Initializing Peer...'); if (peer) peer.destroy(); const peerId = forceNew ? null : ls.get('myPeerId', null);
-                const peerConfig = { config: { 'iceServers': [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }, { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" }, { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" }] } };
+                log('Initializing Peer...'); updateStatus('Initializing Peer...'); if (peer) peer.destroy(); const peerId = forceNew ? null : ls.get('myPeerId', null);
+                const peerConfig = { config: { 'iceServers': [{ urls: 'stun:stun.l.google.com:19302' }, { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" }] } };
                 peer = peerId ? new Peer(peerId, peerConfig) : new Peer(peerConfig);
-                peer.on('open', id => { log('PeerJS connection to server established. My ID:', id); ls.set('myPeerId', id); ui.myIdInput.value = id; updateStatus('Peer active. Ready to connect.', 'success'); });
-                peer.on('connection', conn => { log('Incoming data connection request from:', conn.peer); updateStatus(`Receiving connection from ${conn.peer}...`); setupDataConnection(conn); });
-                peer.on('call', call => { log('Incoming media call request from:', call.peer); updateStatus(`Incoming call from ${call.peer}...`); handleIncomingCall(call); });
-                peer.on('disconnected', () => { log('Peer disconnected from signaling server.'); updateStatus('Reconnecting to signaling server...'); setTimeout(() => peer.reconnect(), 3000); });
-                peer.on('error', err => { log('PEERJS ERROR:', err); updateStatus(`${err.message}`, 'error'); if (err.type === 'unavailable-id') { log('Peer ID was unavailable, requesting a new one.'); initializePeer(true); } });
+                peer.on('open', id => { log('PeerJS connection to server established. My ID:', id); ls.set('myPeerId', id); ui.myIdInput.value = id; updateStatus('Ready to connect.', 'success'); });
+                peer.on('connection', conn => { log('Incoming data connection from:', conn.peer); setupDataConnection(conn); });
+                peer.on('call', call => { log('Incoming media call from:', call.peer); call.answer(localStream); setupMediaConnection(call); });
+                peer.on('error', err => { log('PEERJS ERROR:', err); updateStatus(`${err.message}`, 'error'); });
             };
 
             const connectToPeer = (remoteId) => {
                 if (!remoteId || !peer) return updateStatus('Please enter a valid peer ID.', 'error');
                 if (remoteId === peer.id) return updateStatus("You can't connect to your own ID.", 'error');
-                log(`Attempting to connect to peer: ${remoteId}`); leaveRoom(false); updateStatus(`Connecting to ${remoteId}...`);
+                log(`Attempting to connect to peer: ${remoteId}`); updateStatus(`Connecting to ${remoteId}...`);
                 const conn = peer.connect(remoteId, { reliable: true });
-                clearTimeout(connectionTimeout); connectionTimeout = setTimeout(() => { log('Connection timed out.'); updateStatus('Connection timed out. Peer may be offline or behind a firewall.', 'error'); conn.close(); }, 15000);
                 setupDataConnection(conn);
             };
 
             const setupDataConnection = (conn) => {
                 dataConnection = conn;
-                dataConnection.on('open', () => { log('Data connection established with:', dataConnection.peer); clearTimeout(connectionTimeout); state.currentRoomId = dataConnection.peer; ls.set('currentRoomId', state.currentRoomId); updateStatus(`Connected to peer!`, 'success'); showCallUI(true); setChatLoading(false); loadChatHistory(); startCall(false); });
-                dataConnection.on('data', data => { log('Received data:', data); handleIncomingMessage(data); });
-                dataConnection.on('close', () => { log('Data connection closed by peer.'); leaveRoom(true) });
-                dataConnection.on('error', err => log('DATA CONNECTION ERROR:', err));
+                conn.on('open', async () => {
+                    log('Data connection established with:', conn.peer); updateStatus(`Connected!`, 'success');
+                    ui.messageInput.disabled = false;
+                    ui.roomIdDisplay.textContent = `Connected to ${conn.peer.slice(0, 6)}...`;
+                    await startMedia();
+                    peer.call(conn.peer, localStream);
+                    if (!document.querySelector(`[data-peer-id="${peer.id}"]`)) addVideoStream(peer.id, localStream, true);
+                    showCallUI(true);
+                });
+                conn.on('data', data => { addMessageToUI(data.sender, data.text); });
+                conn.on('close', () => { log('Peer disconnected:', conn.peer); removeVideoStream(conn.peer); updateStatus("Peer has disconnected.", "error"); });
             };
 
             const setupMediaConnection = (call) => {
-                mediaConnection = call;
-                mediaConnection.on('stream', stream => { log('Received remote media stream.'); ui.remoteVideo.srcObject = stream; });
-                mediaConnection.on('close', () => { log('Media connection closed.'); ui.remoteVideo.srcObject = null; });
-                mediaConnection.on('error', err => log('MEDIA CONNECTION ERROR:', err));
-            };
-
-            const handleIncomingCall = (call) => {
-                log('Answering incoming call.'); updateStatus('Answering call...');
-                if (!localStream) { startLocalStream(false).then(() => { if (localStream) { call.answer(localStream); setupMediaConnection(call); } }); } else { call.answer(localStream); setupMediaConnection(call); }
-            };
-
-            const startLocalStream = async (isScreenShare = false) => {
-                log(`Requesting local media stream. Screen share: ${isScreenShare}`);
-                try {
-                    if (localStream) { localStream.getTracks().forEach(track => track.stop()); }
-                    const constraints = { video: true, audio: true };
-                    localStream = isScreenShare ? await navigator.mediaDevices.getDisplayMedia(constraints) : await navigator.mediaDevices.getUserMedia(constraints);
-                    ui.localVideo.srcObject = localStream;
-                    if (isScreenShare) {
-                        localStream.getVideoTracks()[0].onended = () => { log('Screen share ended by user.'); ui.shareScreenBtn.classList.remove('active'); startCall(false); };
-                    }
-                    updateLocalMediaState();
-                    log('Successfully acquired local stream.');
-                    return localStream;
-                } catch (err) { log('Error getting local stream:', err); updateStatus('Could not access camera/mic.', 'error'); }
-            };
-
-            const startCall = async (isScreenShare) => {
-                await startLocalStream(isScreenShare);
-                if (localStream && peer && state.currentRoomId) {
-                    log(`Calling peer: ${state.currentRoomId}`);
-                    if (mediaConnection) mediaConnection.close();
-                    const call = peer.call(state.currentRoomId, localStream);
-                    setupMediaConnection(call);
+                const peerId = call.peer;
+                if (!peers[peerId]) {
+                    call.on('stream', remoteStream => {
+                        log('Received remote stream from:', peerId);
+                        addVideoStream(peerId, remoteStream);
+                    });
+                    call.on('close', () => { log('Call closed with:', peerId); removeVideoStream(peerId); });
+                    peers[peerId] = call;
                 }
             };
 
-            const leaveRoom = (wasDisconnected = false) => {
-                log(`Leaving room. Was disconnected: ${wasDisconnected}`);
-                if (localStream) { localStream.getTracks().forEach(track => track.stop()); localStream = null; }
-                if (dataConnection) { dataConnection.close(); dataConnection = null; }
-                state.currentRoomId = null; ls.set('currentRoomId', ''); ui.remoteIdInput.value = '';
-                showCallUI(false); setChatLoading(true);
-                if (wasDisconnected) { updateStatus("Peer has disconnected.", "error"); } else { updateStatus("You have left the room."); }
+            const startMedia = async () => {
+                if (localStream) { localStream.getTracks().forEach(track => track.stop()); }
+                try {
+                    localStream = await navigator.mediaDevices.getUserMedia({ video: state.isVideoEnabled, audio: true });
+                    localStream.getAudioTracks()[0].enabled = !state.isMuted;
+                } catch (err) {
+                    log('Error getting user media:', err);
+                    updateStatus('Could not access camera/mic.', 'error');
+                }
             };
 
-            const updateLocalMediaState = () => {
-                if (!localStream) return;
-                localStream.getAudioTracks().forEach(track => track.enabled = !state.isMuted);
-                localStream.getVideoTracks().forEach(track => track.enabled = state.isVideoEnabled);
+            const startScreenShare = async () => {
+                try {
+                    const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+                    const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+                    const screenTrack = screenStream.getVideoTracks()[0];
+                    const screenAudioTrack = screenStream.getAudioTracks()[0];
+                    const micAudioTrack = micStream.getAudioTracks()[0];
+
+                    const combinedStream = new MediaStream([screenTrack, micAudioTrack]);
+                    if (screenAudioTrack) {
+                        combinedStream.addTrack(screenAudioTrack);
+                    }
+
+                    localStream = combinedStream;
+                    replaceStream(localStream);
+                    state.isScreenSharing = true;
+                    ui.shareScreenBtn.classList.add('active');
+
+                    screenTrack.onended = () => {
+                        log('Screen share ended.');
+                        state.isScreenSharing = false;
+                        ui.shareScreenBtn.classList.remove('active');
+                        startMedia().then(() => replaceStream(localStream));
+                    };
+
+                } catch (err) { log('Screen share failed:', err); }
             };
 
-            const getChatHistoryKey = () => `chatHistory_${peer?.id}_${state.currentRoomId}`;
-            const loadChatHistory = () => { ui.messagesDiv.innerHTML = ''; ls.getJSON(getChatHistoryKey(), []).forEach(msg => addMessageToUI(msg.sender, msg.text)); };
-            const saveMessageToHistory = (sender, text) => { const h = ls.getJSON(getChatHistoryKey(), []); h.push({ sender, text, timestamp: Date.now() }); ls.setJSON(getChatHistoryKey(), h); };
-            const addMessageToUI = (sender, text) => { const p = document.createElement('p'); p.innerHTML = `<strong>${sender}:</strong> ${text}`; ui.messagesDiv.appendChild(p); ui.messagesDiv.scrollTop = ui.messagesDiv.scrollHeight; };
-            const handleIncomingMessage = (data) => { addMessageToUI(data.sender, data.text); saveMessageToHistory(data.sender, data.text); };
-            const sendMessage = () => { const text = ui.messageInput.value.trim(); if (text && dataConnection?.open) { const msg = { sender: state.username, text }; dataConnection.send(msg); addMessageToUI('You', text); saveMessageToHistory('You', text); ui.messageInput.value = ''; } };
+            const replaceStream = (newStream) => {
+                if (document.querySelector(`[data-peer-id="${peer.id}"] video`)) {
+                    document.querySelector(`[data-peer-id="${peer.id}"] video`).srcObject = newStream;
+                }
+                Object.values(peer.connections).forEach(connectionArray => {
+                    connectionArray.forEach(connection => {
+                        if (connection.type === 'media') {
+                            const sender = connection.peerConnection.getSenders().find(s => s.track.kind === 'video');
+                            if (sender) sender.replaceTrack(newStream.getVideoTracks()[0]);
+                            const audioSender = connection.peerConnection.getSenders().find(s => s.track.kind === 'audio');
+                            if (audioSender) audioSender.replaceTrack(newStream.getAudioTracks()[0]);
+                        }
+                    });
+                });
+            };
+
+            const addVideoStream = (id, stream, isLocal = false) => {
+                if (document.querySelector(`[data-peer-id="${id}"]`)) return;
+                const tile = document.createElement('div');
+                tile.className = 'participant-tile';
+                tile.dataset.peerId = id;
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                video.autoplay = true;
+                if (isLocal) video.muted = true;
+
+                const infoBar = document.createElement('div');
+                infoBar.className = 'info-bar';
+                infoBar.textContent = isLocal ? state.username + ' (You)' : id.slice(0, 6);
+
+                tile.append(video, infoBar);
+                ui.videoGrid.append(tile);
+                updateGridLayout();
+            };
+
+            const removeVideoStream = (id) => {
+                const tile = document.querySelector(`[data-peer-id="${id}"]`);
+                if (tile) tile.remove();
+                delete peers[id];
+                updateGridLayout();
+            };
+
+            const updateGridLayout = () => {
+                const tiles = ui.videoGrid.querySelectorAll('.participant-tile');
+                const screenShareTile = Array.from(tiles).find(t => t.classList.contains('screen-share'));
+
+                tiles.forEach(t => t.classList.remove('screen-share'));
+
+                if (state.isScreenSharing && document.querySelector(`[data-peer-id="${peer.id}"]`)) {
+                    document.querySelector(`[data-peer-id="${peer.id}"]`).classList.add('screen-share');
+                } else if (screenShareTile) {
+                    screenShareTile.classList.add('screen-share');
+                }
+            };
+
+            const addMessageToUI = (sender, text) => {
+                const msgDiv = document.createElement('div');
+                msgDiv.className = 'message';
+                msgDiv.innerHTML = `
+                    <div class="message-avatar"></div>
+                    <div class="message-content">
+                        <div class="header">
+                            <span class="username">${sender}</span>
+                            <span class="timestamp">${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                        <div class="text">${text}</div>
+                    </div>
+                `;
+                ui.messagesDiv.appendChild(msgDiv);
+                ui.messagesDiv.scrollTop = ui.messagesDiv.scrollHeight;
+            };
+
+            const sendMessage = () => {
+                const text = ui.messageInput.value.trim();
+                if (text && dataConnection?.open) {
+                    const msg = { sender: state.username, text };
+                    dataConnection.send(msg); addMessageToUI(state.username + ' (You)', text); ui.messageInput.value = '';
+                }
+            };
 
             const setupEventListeners = () => {
-                ui.saveUsernameBtn.onclick = () => { state.username = ui.usernameInput.value.trim() || 'User'; ls.set('username', state.username); const i = ui.saveUsernameBtn.innerHTML; ui.saveUsernameBtn.innerHTML = '<i class="fa-solid fa-check"></i>'; setTimeout(() => ui.saveUsernameBtn.innerHTML = i, 1500); };
-                ui.copyIdBtn.onclick = () => { navigator.clipboard.writeText(ui.myIdInput.value); const i = ui.copyIdBtn.innerHTML; ui.copyIdBtn.innerHTML = '<i class="fa-solid fa-check"></i>'; setTimeout(() => ui.copyIdBtn.innerHTML = i, 1500); };
+                ui.saveUsernameBtn.onclick = () => { state.username = ui.usernameInput.value.trim() || 'User'; ls.set('username', state.username); };
+                ui.copyIdBtn.onclick = () => { navigator.clipboard.writeText(ui.myIdInput.value); };
                 ui.renewIdBtn.onclick = () => initializePeer(true);
                 ui.joinBtn.onclick = () => connectToPeer(ui.remoteIdInput.value.trim());
-                ui.stopCallBtn.onclick = () => leaveRoom(false);
-                ui.shareScreenBtn.onclick = () => { const isActive = ui.shareScreenBtn.classList.toggle('active'); startCall(isActive); if (!isActive && localStream) startCall(false); };
-                ui.muteBtn.onclick = () => { state.isMuted = !state.isMuted; updateLocalMediaState(); ui.muteBtn.classList.toggle('danger', state.isMuted); ui.muteBtn.innerHTML = state.isMuted ? '<i class="fa-solid fa-microphone-slash"></i>' : '<i class="fa-solid fa-microphone"></i>'; };
-                ui.toggleVideoBtn.onclick = () => { state.isVideoEnabled = !state.isVideoEnabled; updateLocalMediaState(); ui.toggleVideoBtn.classList.toggle('active', state.isVideoEnabled); };
-                ui.expandLocalBtn.onclick = () => { ui.localVideoWrapper.classList.remove('thumbnail'); ui.remoteVideoWrapper.classList.add('thumbnail'); };
-                ui.expandRemoteBtn.onclick = () => { ui.remoteVideoWrapper.classList.remove('thumbnail'); ui.localVideoWrapper.classList.add('thumbnail'); };
-                ui.remoteVolumeSlider.oninput = (e) => { ui.remoteVideo.volume = e.target.value; ui.remoteVideo.muted = e.target.value == 0; };
-                ui.remoteMuteBtn.onclick = () => { ui.remoteVideo.muted = !ui.remoteVideo.muted; ui.remoteMuteBtn.innerHTML = ui.remoteVideo.muted ? '<i class="fa-solid fa-volume-xmark"></i>' : '<i class="fa-solid fa-volume-high"></i>'; if (!ui.remoteVideo.muted) ui.remoteVolumeSlider.value = ui.remoteVideo.volume > 0 ? ui.remoteVideo.volume : 0.5; };
+                ui.stopCallBtn.onclick = () => window.location.reload();
+
+                ui.shareScreenBtn.onclick = () => {
+                    if (state.isScreenSharing) {
+                        state.isScreenSharing = false;
+                        ui.shareScreenBtn.classList.remove('active');
+                        startMedia().then(() => replaceStream(localStream));
+                    } else {
+                        startScreenShare();
+                    }
+                };
+
+                ui.muteBtn.onclick = () => { state.isMuted = !state.isMuted; localStream.getAudioTracks()[0].enabled = !state.isMuted; ui.muteBtn.classList.toggle('danger', state.isMuted); ui.muteBtn.innerHTML = state.isMuted ? '<i class="fa-solid fa-microphone-slash"></i>' : '<i class="fa-solid fa-microphone"></i>'; };
+                ui.toggleVideoBtn.onclick = () => { state.isVideoEnabled = !state.isVideoEnabled; localStream.getVideoTracks()[0].enabled = state.isVideoEnabled; ui.toggleVideoBtn.classList.toggle('active', state.isVideoEnabled); };
+
+                ui.fullscreenBtn.onclick = () => {
+                    const isFullscreen = ui.callContainer.classList.toggle('fullscreen-mode');
+                    ui.fullscreenBtn.innerHTML = isFullscreen ? '<i class="fa-solid fa-compress"></i>' : '<i class="fa-solid fa-expand"></i>';
+                };
+
                 ui.messageForm.onsubmit = e => { e.preventDefault(); sendMessage(); };
-                let currentTheme = ls.get('theme', 'dark'); document.body.classList.toggle('light-theme', currentTheme === 'light'); ui.themeSwitcher.onclick = () => { currentTheme = currentTheme === 'light' ? 'dark' : 'light'; ls.set('theme', currentTheme); document.body.classList.toggle('light-theme', currentTheme === 'light'); };
+
+                document.addEventListener('contextmenu', e => {
+                    const video = e.target.closest('video');
+                    if (video && !video.muted) {
+                        e.preventDefault();
+                        ui.contextMenu.classList.remove('hidden');
+                        ui.contextMenu.style.top = `${e.clientY}px`;
+                        ui.contextMenu.style.left = `${e.clientX}px`;
+                        ui.contextVolumeSlider.value = video.volume;
+                        ui.contextVolumeSlider.oninput = () => video.volume = ui.contextVolumeSlider.value;
+                    } else {
+                        ui.contextMenu.classList.add('hidden');
+                    }
+                });
+                document.addEventListener('click', () => ui.contextMenu.classList.add('hidden'));
             };
 
             setupEventListeners();
             ui.usernameInput.value = state.username;
             initializePeer();
-            const lastRoomId = ls.get('currentRoomId', null);
-            if (lastRoomId) { ui.remoteIdInput.value = lastRoomId; updateStatus("Reconnect to your last peer if they are online."); }
         });
     </script>
 </body>
