@@ -30,6 +30,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let localStream = null;
     let mediaConnections = {};
 
+    let peerMetadata = {};
+
     let state = { username: ls.get('username', 'User'), isMuted: false, isVideoEnabled: true, isScreenSharing: false };
     const log = (...args) => console.log('[P2P DEBUG]', ...args);
 
@@ -131,12 +133,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const handleData = (data, peerId) => {
         const tile = document.querySelector(`[data-peer-id="${peerId}"]`);
         switch (data.type) {
-            case 'chat': addMessageToUI(data.sender, data.text); break;
-            case 'videoState': updateVideoState(peerId, data.enabled); break;
+            case 'chat':
+                addMessageToUI(data.sender, data.text);
+                break;
+            case 'videoState':
+                updateVideoState(peerId, data.enabled);
+                break;
             case 'userData':
+                peerMetadata[peerId] = { username: data.username };
                 if (tile) {
                     tile.querySelector('.info-bar').textContent = data.username;
-                    tile.querySelector('.placeholder-avatar').textContent = data.username.charAt(0).toUpperCase();
+                    const avatar = tile.querySelector('.placeholder-avatar');
+                    if (avatar) avatar.textContent = data.username.charAt(0).toUpperCase();
                 }
                 updateVideoState(peerId, data.isVideoEnabled);
                 break;
@@ -146,7 +154,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const setupMediaConnection = (call) => {
         const peerId = call.peer;
         mediaConnections[peerId] = call;
-        call.on('stream', remoteStream => addVideoStream(peerId, remoteStream, false, peerId.slice(0, 6)));
+        const username = peerMetadata[peerId]?.username || peerId.slice(0, 6);
+        call.on('stream', remoteStream => {
+            addVideoStream(peerId, remoteStream, false, username);
+            const tile = document.querySelector(`[data-peer-id="${peerId}"]`);
+            if (tile && peerMetadata[peerId]) {
+                tile.querySelector('.info-bar').textContent = peerMetadata[peerId].username;
+                const avatar = tile.querySelector('.placeholder-avatar');
+                if (avatar) avatar.textContent = peerMetadata[peerId].username.charAt(0).toUpperCase();
+            }
+        });
         call.on('close', () => removeVideoStream(peerId));
         call.on('error', err => log('Media call error with', peerId, ':', err));
     };
@@ -175,20 +192,34 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         try {
             const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-            const screenTrack = screenStream.getVideoTracks()[0];
-            if (localStream) localStream.getTracks().forEach(track => track.stop());
+            const screenVideoTrack = screenStream.getVideoTracks()[0];
 
-            localStream = screenStream;
+            const audioTrack = localStream?.getAudioTracks()[0];
+            const newStream = new MediaStream([screenVideoTrack]);
+            if (audioTrack) {
+                newStream.addTrack(audioTrack.clone());
+            }
+
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+
+            localStream = newStream;
             replaceStream(localStream);
             state.isScreenSharing = true;
             ui.shareScreenBtn.classList.add('active');
-            screenTrack.onended = () => {
+
+            screenVideoTrack.onended = () => {
                 state.isScreenSharing = false;
                 ui.shareScreenBtn.classList.remove('active');
-                startMedia().then(replaceStream);
+                startMedia().then(stream => {
+                    localStream = stream;
+                    replaceStream(stream);
+                }).catch(err => log('Error restarting media after screen share:', err));
             };
         } catch (err) {
             log('Screen share failed:', err);
+            updateStatus('Could not start screen share.', 'error');
         }
     };
 
@@ -322,7 +353,24 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const setupEventListeners = () => {
-        ui.saveUsernameBtn.onclick = () => { state.username = ui.usernameInput.value.trim() || 'User'; ls.set('username', state.username); };
+        ui.saveUsernameBtn.onclick = () => {
+            state.username = ui.usernameInput.value.trim() || 'User';
+            ls.set('username', state.username);
+
+            const myTile = document.querySelector(`[data-peer-id="${peer.id}"]`);
+            if (myTile) {
+                myTile.querySelector('.info-bar').textContent = state.username;
+                myTile.querySelector('.placeholder-avatar').textContent = state.username.charAt(0).toUpperCase();
+            }
+
+            if (dataConnection && dataConnection.open) {
+                dataConnection.send({
+                    type: 'userData',
+                    username: state.username,
+                    isVideoEnabled: state.isVideoEnabled
+                });
+            }
+        };
         ui.copyIdBtn.onclick = () => { navigator.clipboard.writeText(ui.myIdInput.value); const icon = ui.copyIdBtn.innerHTML; ui.copyIdBtn.innerHTML = `<i class="fa-solid fa-check"></i>`; setTimeout(() => { ui.copyIdBtn.innerHTML = icon; }, 1500); };
         ui.usernameInput.addEventListener('keyup', e => e.key === 'Enter' && ui.saveUsernameBtn.click());
         ui.remoteIdInput.addEventListener('keyup', e => e.key === 'Enter' && ui.joinBtn.click());
