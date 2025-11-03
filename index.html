@@ -646,8 +646,12 @@
             };
 
             const setupDataConnection = (conn) => {
-                const isInitiator = !dataConnection;
-                dataConnection = conn;
+                const isInitiator = !!dataConnection;
+
+                if (!dataConnection) {
+                    dataConnection = conn;
+                }
+
                 log('============ DATA CONNECTION SETUP ============');
                 log('isInitiator:', isInitiator);
                 log('Peer:', conn.peer);
@@ -658,13 +662,16 @@
                     ui.messageInput.disabled = false;
                     ui.roomIdDisplay.textContent = `Connected to ${conn.peer.slice(0, 6)}...`;
 
+                    log('Starting local media...');
                     await startMedia();
                     log('Local stream ready, tracks:', localStream.getTracks().map(t => `${t.kind}: ${t.label}`));
 
                     if (!document.querySelector(`[data-peer-id="${peer.id}"]`)) {
+                        log('Adding local video tile');
                         addVideoStream(peer.id, localStream, true);
                     }
 
+                    log('Showing call UI');
                     showCallUI(true);
 
                     if (isInitiator) {
@@ -706,6 +713,8 @@
                         });
 
                         mediaConnections[call.peer] = call;
+                    } else {
+                        log('Not initiator, waiting for incoming call...');
                     }
                 });
 
