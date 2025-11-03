@@ -577,7 +577,7 @@
 
                 peer.on('connection', conn => {
                     log('Incoming data connection from:', conn.peer);
-                    setupDataConnection(conn);
+                    setupDataConnection(conn, false);
                 });
 
                 peer.on('call', call => {
@@ -640,20 +640,17 @@
             const connectToPeer = (remoteId) => {
                 if (!remoteId || !peer) return updateStatus('Please enter a valid peer ID.', 'error');
                 if (remoteId === peer.id) return updateStatus("You can't connect to your own ID.", 'error');
-                log(`Attempting to connect to peer: ${remoteId}`); updateStatus(`Connecting to ${remoteId}...`);
+                log(`Attempting to connect to peer: ${remoteId}`);
+                updateStatus(`Connecting to ${remoteId}...`);
                 const conn = peer.connect(remoteId, { reliable: true });
-                setupDataConnection(conn);
+                setupDataConnection(conn, true);
             };
 
-            const setupDataConnection = (conn) => {
-                const isInitiator = !!dataConnection;
-
-                if (!dataConnection) {
-                    dataConnection = conn;
-                }
+            const setupDataConnection = (conn, amInitiator = false) => {
+                dataConnection = conn;
 
                 log('============ DATA CONNECTION SETUP ============');
-                log('isInitiator:', isInitiator);
+                log('isInitiator:', amInitiator);
                 log('Peer:', conn.peer);
 
                 conn.on('open', async () => {
@@ -674,7 +671,7 @@
                     log('Showing call UI');
                     showCallUI(true);
 
-                    if (isInitiator) {
+                    if (amInitiator) {
                         await new Promise(resolve => setTimeout(resolve, 1000));
                         log('============ INITIATING CALL ============');
                         log('Calling peer:', conn.peer);
@@ -706,6 +703,7 @@
                         call.on('close', () => {
                             log('Call closed (initiator) with:', call.peer);
                             removeVideoStream(call.peer);
+                            delete mediaConnections[call.peer];
                         });
 
                         call.on('error', err => {
