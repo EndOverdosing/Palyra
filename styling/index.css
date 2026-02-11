@@ -1900,15 +1900,6 @@ body[data-font-size="large"] {
     }
 }
 
-.message-input-wrapper {
-    display: flex;
-    align-items: flex-end;
-    gap: 0.5rem;
-    padding: 1rem;
-    background-color: var(--tertiary-bg);
-    border-top: 1px solid var(--border-color);
-}
-
 #attach-file-btn {
     background: none;
     color: var(--secondary-text);
@@ -1924,43 +1915,6 @@ body[data-font-size="large"] {
     background-color: rgba(88, 101, 242, 0.1);
     color: var(--primary-accent);
     transform: none;
-}
-
-#message-input {
-    flex: 1;
-    background-color: var(--secondary-bg);
-    border: 1px solid var(--border-color);
-    border-radius: var(--input-border-radius-round);
-    color: var(--primary-text);
-    font-size: 1rem;
-    padding: 0.75rem 1rem;
-    resize: none;
-    max-height: 120px;
-    overflow-y: auto;
-    font-family: inherit;
-}
-
-#message-input:focus {
-    outline: none;
-    border-color: var(--primary-accent);
-}
-
-.message-input-wrapper button[type="submit"] {
-    background-color: var(--primary-accent);
-    color: white;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    font-size: 1rem;
-    padding: 0;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.message-input-wrapper button[type="submit"]:hover {
-    opacity: 0.9;
 }
 
 .message-reaction {
