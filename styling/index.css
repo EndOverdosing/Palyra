@@ -1899,3 +1899,210 @@ body[data-font-size="large"] {
         cursor: default;
     }
 }
+
+.message-input-wrapper {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.5rem;
+    padding: 1rem;
+    background-color: var(--tertiary-bg);
+    border-top: 1px solid var(--border-color);
+}
+
+#attach-file-btn {
+    background: none;
+    color: var(--secondary-text);
+    font-size: 1.2rem;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    flex-shrink: 0;
+    border-radius: 50%;
+}
+
+#attach-file-btn:hover {
+    background-color: rgba(88, 101, 242, 0.1);
+    color: var(--primary-accent);
+    transform: none;
+}
+
+#message-input {
+    flex: 1;
+    background-color: var(--secondary-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--input-border-radius-round);
+    color: var(--primary-text);
+    font-size: 1rem;
+    padding: 0.75rem 1rem;
+    resize: none;
+    max-height: 120px;
+    overflow-y: auto;
+    font-family: inherit;
+}
+
+#message-input:focus {
+    outline: none;
+    border-color: var(--primary-accent);
+}
+
+.message-input-wrapper button[type="submit"] {
+    background-color: var(--primary-accent);
+    color: white;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    font-size: 1rem;
+    padding: 0;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.message-input-wrapper button[type="submit"]:hover {
+    opacity: 0.9;
+}
+
+.message-reaction {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    background: var(--tertiary-bg);
+    border-radius: 12px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: var(--transition-fast);
+    border: 1px solid transparent;
+}
+
+.message-reaction:hover {
+    background: var(--secondary-bg);
+    border-color: var(--border-color);
+}
+
+.message-reaction.reacted {
+    background: rgba(88, 101, 242, 0.2);
+    border-color: var(--primary-accent);
+}
+
+.message-image {
+    max-width: 300px;
+    border-radius: var(--button-border-radius);
+    cursor: pointer;
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+.message-audio {
+    max-width: 100%;
+    margin-bottom: 0.5rem;
+}
+
+.message-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: var(--tertiary-bg);
+    border-radius: var(--button-border-radius);
+    text-decoration: none;
+    color: var(--primary-text);
+    transition: var(--transition-fast);
+}
+
+.message-file:hover {
+    background: var(--secondary-bg);
+}
+
+.group-member-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border-radius: var(--button-border-radius);
+    cursor: pointer;
+    margin-bottom: 0.5rem;
+    background: var(--tertiary-bg);
+    transition: var(--transition-fast);
+}
+
+.group-member-item:hover {
+    background: var(--secondary-bg);
+}
+
+.group-member-item.selected {
+    background: rgba(88, 101, 242, 0.1);
+    border: 1px solid var(--primary-accent);
+}
+
+.group-member-checkbox {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: var(--transition-fast);
+}
+
+.group-member-item.selected .group-member-checkbox {
+    background-color: var(--primary-accent);
+    border-color: var(--primary-accent);
+}
+
+.group-member-checkbox i {
+    color: white;
+    font-size: 0.7rem;
+    opacity: 0;
+    transition: var(--transition-fast);
+}
+
+.group-member-item.selected .group-member-checkbox i {
+    opacity: 1;
+}
+
+.group-member-name {
+    flex: 1;
+    font-weight: 500;
+}
+
+.message-sender-avatar {
+    width: 32px;
+    height: 32px;
+    font-size: 0.9rem;
+    margin-right: 0.5rem;
+    flex-shrink: 0;
+}
+
+.message-sender-name {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--primary-accent);
+    margin-bottom: 0.25rem;
+}
+
+@media (max-width: 768px) {
+    .message-timestamp-reveal {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 0.75rem;
+        color: var(--secondary-text);
+        opacity: 0;
+        transition: opacity 0.2s ease;
+        pointer-events: none;
+    }
+    
+    .message.sent .message-timestamp-reveal {
+        right: 100%;
+        padding-right: 0.5rem;
+    }
+    
+    .message.received .message-timestamp-reveal {
+        left: 100%;
+        padding-left: 0.5rem;
+    }
+}
