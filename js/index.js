@@ -404,7 +404,10 @@ document.addEventListener('DOMContentLoaded', () => {
             ui.callBtn.disabled = false;
         });
 
-        peer.on('call', handleIncomingCall);
+        peer.on('call', (call) => {
+            mediaConnection = call;
+            handleIncomingCall(call);
+        });
 
         peer.on('disconnected', () => {
             if (!peer.destroyed) {
