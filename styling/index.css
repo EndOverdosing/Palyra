@@ -1859,10 +1859,6 @@ select option {
     display: flex;
 }
 
-.participant-tile.video-off video {
-    display: none;
-}
-
 .participant-tile.fullscreen {
     position: fixed;
     top: 0;
