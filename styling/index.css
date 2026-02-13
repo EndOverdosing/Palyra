@@ -7,7 +7,7 @@
     --secondary-text: #b5bac1;
     --header-text: #f2f3f5;
     --border-color: #3f4147;
-    --success: #2dc770;
+    --success: #3f4147;
     --error: #f23f42;
     --warning: #f0b232;
     --card-border-radius: 8px;
@@ -29,7 +29,7 @@
     --secondary-text: #4e5058;
     --header-text: #2e3338;
     --border-color: #d1d4d8;
-    --success: #23a55a;
+    --success: #3f4147;
     --error: #f23f42;
     --warning: #f0b232;
 }
@@ -322,7 +322,7 @@ button:disabled:hover {
     align-items: center;
     justify-content: center;
     font-weight: bold;
-    font-size: 1.2rem;
+    font-size: .8rem;
     color: var(--primary-text);
     text-transform: uppercase;
     flex-shrink: 0;
@@ -433,7 +433,7 @@ button:disabled:hover {
     flex: 1;
     font-size: 0.85rem;
     font-weight: 500;
-    border-radius: var(--button-border-radius);
+    border-radius: var(--button-border-radius-round);
     border: 1px solid transparent;
     background: var(--tertiary-bg);
     color: var(--primary-text);
@@ -653,6 +653,11 @@ button.secondary:hover {
     padding: 1rem 1.5rem;
     gap: 1rem;
     flex-shrink: 0;
+    background-color: var(--secondary-bg);
+    width: 90%;
+    margin: 0 auto;
+    margin-top: 20px;
+    border-radius: var(--button-border-radius-round);
 }
 
 #chat-header .friend-info {
@@ -691,9 +696,9 @@ button.secondary:hover {
 }
 
 #chat-header .chat-actions button {
-    background: none;
+    background: var(--tertiary-bg);
     color: var(--secondary-text);
-    font-size: 1.2rem;
+    font-size: 1rem;
     width: 40px;
     height: 40px;
     padding: 0;
