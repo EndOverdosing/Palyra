@@ -2401,16 +2401,23 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-
     const handleIncomingCall = (call) => {
         console.log('🎯 handleIncomingCall called');
         console.log('Received call:', call);
         console.log('Current mediaConnection before assignment:', mediaConnection);
         console.log('isInCall:', isInCall);
+        console.log('Call from:', call.metadata?.from);
+        console.log('Current incomingCallData?.from:', incomingCallData?.from);
 
-        if (isInCall) {
-            console.log('⚠️ Already in a call, ignoring new incoming call');
+        if (isInCall && call.metadata?.from !== incomingCallData?.from) {
+            console.log('⚠️ Already in a call with someone else, ignoring new incoming call');
             call.close();
+            return;
+        }
+
+        if (isInCall && call.metadata?.from === incomingCallData?.from) {
+            console.log('✅ Call from same person we are accepting, updating mediaConnection');
+            mediaConnection = call;
             return;
         }
 
@@ -2438,7 +2445,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         console.log('✅ Showing incoming call modal');
         showModal(ui.incomingCallModal);
-        ui.incomingCallAudio.play();
+        ui.incomingCallAudio.play().catch(err => console.error('Error playing call sound:', err));
 
         call.on('close', () => {
             console.log('📴 Call close event triggered');
