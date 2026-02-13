@@ -2825,6 +2825,10 @@ document.addEventListener('DOMContentLoaded', () => {
         video.srcObject = stream;
         video.autoplay = true;
         video.playsInline = true;
+        video.setAttribute('playsinline', '');
+        video.style.width = '100%';
+        video.style.height = '100%';
+        video.style.objectFit = 'cover';
 
         if (type === 'local') {
             video.muted = true;
@@ -2898,13 +2902,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             track.onended = () => {
                 console.log(`Video track ended for ${type}`);
-                tile.classList.add('video-off');
+                updateVideoState();
             };
-        } else {
-            tile.classList.add('video-off');
-        }
 
-        console.log(`✅ addVideoStream completed for ${type}`);
+            stream.onremovetrack = () => {
+                console.log(`Track removed from stream for ${type}`);
+                updateVideoState();
+            };
+        }
     };
 
     const updateVideoState = (id, enabled) => {

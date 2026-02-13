@@ -1828,34 +1828,37 @@ select option {
 
 .participant-tile {
     position: relative;
-    background-color: #1a1a1a;
+    background: var(--tertiary-bg);
     border-radius: var(--card-border-radius);
     overflow: hidden;
-    width: 100%;
-    flex: 1;
-    min-height: 250px;
+    aspect-ratio: 16/9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
 }
 
 .participant-tile video {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    background-color: #000;
     display: block;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
 }
 
 .participant-tile .video-off-placeholder {
     position: absolute;
     top: 0;
     left: 0;
-    right: 0;
-    bottom: 0;
+    width: 100%;
+    height: 100%;
     display: none;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background-color: var(--secondary-bg);
-    color: var(--secondary-text);
+    gap: 1rem;
+    background: var(--tertiary-bg);
 }
 
 .participant-tile.video-off .video-off-placeholder {
@@ -2673,6 +2676,9 @@ body[data-font-size="large"] {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    display: block;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
 }
 
 .participant-name {
