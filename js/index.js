@@ -2495,6 +2495,8 @@ document.addEventListener('DOMContentLoaded', () => {
             ui.chatView.classList.add('hidden');
             ui.videoGrid.innerHTML = '';
 
+            let remoteStreamReceived = false;
+
             mediaConnection.on('error', (err) => {
                 console.error('Media connection error:', err);
                 endCall();
@@ -2502,6 +2504,12 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             mediaConnection.on('stream', (remoteStream) => {
+                if (remoteStreamReceived) {
+                    console.log('📺 Remote stream already added, ignoring duplicate');
+                    return;
+                }
+                remoteStreamReceived = true;
+
                 console.log('📺 Remote stream received:', remoteStream);
                 console.log('Remote stream tracks:', remoteStream.getTracks());
                 addVideoStream('remote', remoteStream, friends[incomingCallData.from]);
