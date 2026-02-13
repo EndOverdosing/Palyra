@@ -405,7 +405,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         peer.on('call', (call) => {
+            console.log('📞 PEER CALL EVENT TRIGGERED');
+            console.log('Call object:', call);
+            console.log('Call metadata:', call.metadata);
             mediaConnection = call;
+            console.log('mediaConnection set to:', mediaConnection);
             handleIncomingCall(call);
         });
 
@@ -2399,13 +2403,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     const handleIncomingCall = (call) => {
+        console.log('🎯 handleIncomingCall called');
+        console.log('Received call:', call);
+        console.log('Current mediaConnection before assignment:', mediaConnection);
+
         mediaConnection = call;
+        console.log('mediaConnection after assignment:', mediaConnection);
+
         incomingCallData = call.metadata;
+        console.log('incomingCallData:', incomingCallData);
 
         const callerId = incomingCallData.from;
         const caller = friends[callerId];
+        console.log('Caller:', caller);
 
         if (!caller) {
+            console.log('❌ Caller not found in friends list, closing call');
             call.close();
             return;
         }
@@ -2416,10 +2429,12 @@ document.addEventListener('DOMContentLoaded', () => {
             ui.callerAvatar.innerHTML = `<img src="${caller.avatar_url}" alt="${caller.username}">`;
         }
 
+        console.log('✅ Showing incoming call modal');
         showModal(ui.incomingCallModal);
         ui.incomingCallAudio.play();
 
         call.on('close', () => {
+            console.log('📴 Call close event triggered');
             if (isInCall) {
                 endCall();
                 showInfoModal('Call Ended', 'The call has ended.');
@@ -2436,14 +2451,23 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     ui.acceptCallBtn.onclick = async () => {
+        console.log('🟢 ACCEPT BUTTON CLICKED');
+        console.log('mediaConnection state:', mediaConnection);
+        console.log('incomingCallData:', incomingCallData);
+
         hideModal();
         ui.incomingCallAudio.pause();
         ui.incomingCallAudio.currentTime = 0;
 
         try {
             if (!mediaConnection) {
+                console.error('❌ mediaConnection is null/undefined!');
+                console.log('Current peer:', peer);
+                console.log('Current peer.id:', peer?.id);
                 throw new Error('No active call to answer');
             }
+
+            console.log('✅ mediaConnection exists, proceeding...');
 
             localStream = await navigator.mediaDevices.getUserMedia({
                 video: { width: { ideal: 1280 }, height: { ideal: 720 } },
