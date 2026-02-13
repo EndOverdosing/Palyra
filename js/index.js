@@ -124,6 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let callState = { isMuted: false, isVideoEnabled: true, isScreenSharing: false };
     let incomingCallData = null;
     let onlineUsers = new Set();
+    let incomingCallTimeout = null;
     let isInCall = false;
     let typingTimeout = null;
 
@@ -666,8 +667,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 const callerData = payload.payload;
 
                 if (isInCall) {
+                    await channel.send({
+                        type: 'broadcast',
+                        event: 'call_declined',
+                        payload: {
+                            declinedBy: currentUser.id,
+                            callerId: callerData.callerId
+                        }
+                    });
                     return;
                 }
+
+                incomingCallData = {
+                    from: callerData.callerId,
+                    peerId: callerData.callerPeerId,
+                    callerName: callerData.callerName,
+                    callerAvatar: callerData.callerAvatar
+                };
 
                 ui.callerName.textContent = callerData.callerName;
                 ui.callerAvatar.textContent = callerData.callerName[0].toUpperCase();
@@ -675,21 +691,34 @@ document.addEventListener('DOMContentLoaded', () => {
                     ui.callerAvatar.innerHTML = `<img src="${callerData.callerAvatar}" alt="${callerData.callerName}">`;
                 }
 
-                incomingCallData = {
-                    from: callerData.callerId,
-                    peerId: callerData.callerPeerId,
-                    callerName: callerData.callerName
-                };
-
                 showModal(ui.incomingCallModal);
-                ui.incomingCallAudio.play();
+                ui.incomingCallAudio.play().catch(err => console.error('Error playing call sound:', err));
+
+                incomingCallTimeout = setTimeout(() => {
+                    if (!isInCall && incomingCallData) {
+                        hideModal();
+                        ui.incomingCallAudio.pause();
+                        ui.incomingCallAudio.currentTime = 0;
+                        incomingCallData = null;
+                    }
+                }, 30000);
             })
             .on('broadcast', { event: 'call_cancelled' }, (payload) => {
-                if (payload.payload.callerId === incomingCallData?.from) {
+                if (incomingCallData?.from === payload.payload.callerId) {
                     hideModal();
                     ui.incomingCallAudio.pause();
                     ui.incomingCallAudio.currentTime = 0;
                     incomingCallData = null;
+                    if (incomingCallTimeout) {
+                        clearTimeout(incomingCallTimeout);
+                    }
+                }
+            })
+            .on('broadcast', { event: 'call_accepted' }, async (payload) => {
+                if (activeCallInvite && payload.payload.acceptedBy === activeCallInvite.calleeId) {
+                    const { acceptedBy, accepterPeerId } = payload.payload;
+                    await initiateCallConnection(acceptedBy, accepterPeerId);
+                    hideOutgoingCallUI();
                 }
             })
             .on('broadcast', { event: 'call_declined' }, async (payload) => {
@@ -708,6 +737,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             })
             .subscribe();
+
+        if (peer) {
+            peer.on('call', (call) => {
+                mediaConnection = call;
+                handleIncomingCall(call);
+            });
+        }
 
         subscriptions.push(channel);
     };
@@ -2784,6 +2820,10 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const endCall = async () => {
+        if (incomingCallTimeout) {
+            clearTimeout(incomingCallTimeout);
+            incomingCallTimeout = null;
+        }
         if (localStream) {
             localStream.getTracks().forEach(track => track.stop());
             localStream = null;
