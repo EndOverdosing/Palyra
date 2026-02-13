@@ -118,7 +118,6 @@ document.addEventListener('DOMContentLoaded', () => {
         friendRequestsModal: document.getElementById('friend-requests-modal'),
         requestsList: document.getElementById('requests-list'),
         closeChatPaneBtn: document.getElementById('close-chat-pane-btn'),
-        callTitle: document.getElementById('call-title'),
     };
 
     let peer, localStream, dataConnection, mediaConnection, currentUser, currentChatFriend, friends = {}, subscriptions = [];
@@ -127,6 +126,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let onlineUsers = new Set();
     let isInCall = false;
     let typingTimeout = null;
+
+    let currentPath = 'messages';
 
     let keepAliveInterval = null;
     let currentChatType = 'friend';
@@ -267,7 +268,61 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     ui.callBtn.onclick = async () => {
-        await startCall();
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: true
+            });
+
+            if (!currentChatFriend) {
+                showInfoModal('Error', 'Please select a friend to call.');
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                }
+                return;
+            }
+
+            ui.callSection.classList.remove('hidden');
+            ui.chatView.classList.add('hidden');
+
+            const localVideo = document.createElement('video');
+            localVideo.srcObject = localStream;
+            localVideo.autoplay = true;
+            localVideo.muted = true;
+            localVideo.playsInline = true;
+            localVideo.id = 'local-video';
+
+            ui.videoGrid.innerHTML = '';
+            ui.videoGrid.appendChild(localVideo);
+
+            const callChannel = supabase.channel(`call-invite-${currentChatFriend.id}`);
+            callChannel.subscribe(async (status) => {
+                if (status === 'SUBSCRIBED') {
+                    await callChannel.send({
+                        type: 'broadcast',
+                        event: 'incoming_call',
+                        payload: {
+                            callerId: currentUser.id,
+                            callerName: currentUser.username,
+                            callerAvatar: currentUser.avatar_url,
+                            callerPeerId: peer.id
+                        }
+                    });
+                }
+            });
+
+            isInCall = true;
+
+        } catch (error) {
+            console.error('Media access error:', error);
+            if (error.name === 'NotAllowedError') {
+                showInfoModal('Permission Denied', 'Camera and microphone access was denied. Please allow access in your browser settings and try again.');
+            } else if (error.name === 'NotFoundError') {
+                showInfoModal('Device Not Found', 'No camera or microphone found. Please connect a device and try again.');
+            } else {
+                showInfoModal('Error', 'Could not access camera/microphone. Please check your permissions and try again.');
+            }
+        }
     };
 
     ui.chatOptionsBtn.onclick = () => {
@@ -338,13 +393,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
         peer.on('call', handleIncomingCall);
 
-        peer.on('error', (err) => {
-            if (err.type === 'peer-unavailable' || err.message.includes('Could not connect to peer')) {
-                showCallOverlay('User Offline', 'The person you\'re trying to call is currently offline. Please try again later.', 'error');
+        peer.on('error', (error) => {
+            console.error('Peer error:', error);
+            if (isInCall) {
+                ui.callSection.classList.add('hidden');
+                ui.chatView.classList.remove('hidden');
+                isInCall = false;
             }
-
-            if (err.type === 'network' || err.type === 'server-error') {
-                setTimeout(() => initializePeer(userId), 5000);
+            if (error.type === 'peer-unavailable') {
+                showInfoModal('User Unavailable', 'The user is currently offline or unavailable.');
+            } else if (error.type === 'network') {
+                showInfoModal('Connection Error', 'Network error occurred. Please check your connection.');
+            } else if (error.type === 'disconnected') {
             }
         });
     };
@@ -404,6 +464,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             subscribeToPresence();
             subscribeToMessages();
+            subscribeToMessageBroadcasts();
+            subscribeToProfileUpdates();
+            subscribeToCallInvites();
             subscribeToFriendRequests();
             subscribeToFriendships();
             subscribeToCallInvites();
@@ -520,28 +583,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const subscribeToFriendRequests = () => {
         if (!currentUser || !currentUser.id) return;
 
-        const channel = supabase
-            .channel('friend-requests-changes')
-            .on('postgres_changes', {
-                event: '*',
-                schema: 'public',
-                table: 'friendships'
-            }, async (payload) => {
-                if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-                    if (payload.new.friend_id === currentUser.id && payload.new.status === 'pending') {
-                        await loadFriendRequests();
-                        showNotification('New friend request received!');
-                    } else if (payload.new.status === 'accepted') {
-                        await loadFriends();
-                        await updateConversationsList();
-                    }
-                } else if (payload.eventType === 'DELETE') {
-                    await loadFriends();
-                    await loadFriendRequests();
-                    await updateConversationsList();
-                }
+        const channel = supabase.channel(`friend-requests-${currentUser.id}`);
+
+        channel
+            .on('broadcast', { event: 'friend_request' }, async (payload) => {
+                await loadFriendRequests();
+                await updateConversationsList();
+                showNotification('New friend request received!');
             })
-            .subscribe();
+            .on('broadcast', { event: 'friend_accepted' }, async (payload) => {
+                await loadFriends();
+                await updateConversationsList();
+                showNotification('Friend request accepted!');
+            })
+            .on('broadcast', { event: 'friend_removed' }, async (payload) => {
+                await loadFriends();
+                await updateConversationsList();
+            })
+            .on('broadcast', { event: 'request_declined' }, async (payload) => {
+                await loadFriendRequests();
+                await updateConversationsList();
+            })
+            .subscribe((status) => {
+            });
 
         subscriptions.push(channel);
     };
@@ -567,35 +631,64 @@ document.addEventListener('DOMContentLoaded', () => {
     const subscribeToCallInvites = () => {
         if (!currentUser || !currentUser.id) return;
 
-        const channel = supabase
-            .channel('call-invites-changes')
-            .on('postgres_changes', {
-                event: 'INSERT',
-                schema: 'public',
-                table: 'call_invites',
-                filter: `callee_id=eq.${currentUser.id}`
-            }, async (payload) => {
-                if (payload.new.status === 'pending') {
-                    const { data: caller } = await supabase
-                        .from('profiles')
-                        .select('*')
-                        .eq('id', payload.new.caller_id)
-                        .single();
+        const channel = supabase.channel(`call-invite-${currentUser.id}`);
 
-                    if (caller) {
-                        ui.callerName.textContent = caller.username;
-                        ui.callerAvatar.textContent = caller.username[0].toUpperCase();
-                        if (caller.avatar_url) {
-                            ui.callerAvatar.innerHTML = `<img src="${caller.avatar_url}" alt="${caller.username}">`;
-                        }
+        channel
+            .on('broadcast', { event: 'incoming_call' }, async (payload) => {
+                const callerData = payload.payload;
 
-                        incomingCallData = { from: caller.id, callInviteId: payload.new.id };
-                        showModal(ui.incomingCallModal);
-                        ui.incomingCallAudio.play();
-                    }
+                ui.callerName.textContent = callerData.callerName;
+                ui.callerAvatar.textContent = callerData.callerName[0].toUpperCase();
+                if (callerData.callerAvatar) {
+                    ui.callerAvatar.innerHTML = `<img src="${callerData.callerAvatar}" alt="${callerData.callerName}">`;
+                }
+
+                incomingCallData = {
+                    from: callerData.callerId,
+                    peerId: callerData.callerPeerId,
+                    callerName: callerData.callerName
+                };
+
+                showModal(ui.incomingCallModal);
+                ui.incomingCallAudio.play();
+            })
+            .on('broadcast', { event: 'call_accepted' }, async (payload) => {
+
+                if (localStream && payload.payload.accepterPeerId) {
+                    const call = peer.call(payload.payload.accepterPeerId, localStream);
+
+                    call.on('stream', (remoteStream) => {
+                        const remoteVideo = document.createElement('video');
+                        remoteVideo.srcObject = remoteStream;
+                        remoteVideo.autoplay = true;
+                        remoteVideo.playsInline = true;
+                        remoteVideo.id = 'remote-video';
+                        ui.videoGrid.appendChild(remoteVideo);
+                    });
+
+                    call.on('error', (err) => {
+                        console.error('Call error:', err);
+                        showInfoModal('Call Error', 'Could not establish call connection.');
+                    });
+
+                    mediaConnection = call;
                 }
             })
-            .subscribe();
+            .on('broadcast', { event: 'call_declined' }, async (payload) => {
+                showInfoModal('Call Declined', 'The user declined your call.');
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                    localStream = null;
+                }
+                ui.videoGrid.innerHTML = '';
+                ui.callSection.classList.add('hidden');
+                ui.chatView.classList.remove('hidden');
+                isInCall = false;
+            })
+            .subscribe((status) => {
+                if (status === 'SUBSCRIBED') {
+                }
+            });
 
         subscriptions.push(channel);
     };
@@ -657,7 +750,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 event: 'INSERT',
                 schema: 'public',
                 table: 'messages',
-                filter: `or(receiver_id=eq.${currentUser.id},sender_id=eq.${currentUser.id})`
+                filter: `or(receiver_id.eq.${currentUser.id},sender_id.eq.${currentUser.id})`
             }, async (payload) => {
                 await handleNewMessage(payload.new);
             })
@@ -675,7 +768,87 @@ document.addEventListener('DOMContentLoaded', () => {
             }, (payload) => {
                 removeMessageFromUI(payload.old.id);
             })
+            .subscribe((status) => {
+            });
+
+        subscriptions.push(channel);
+    };
+
+    const subscribeToMessageBroadcasts = () => {
+        if (!currentUser || !currentUser.id) return;
+
+
+        const channel = supabase.channel(`messages-${currentUser.id}`);
+
+        channel
+            .on('broadcast', { event: 'new_message' }, async (payload) => {
+                const { data: message } = await supabase
+                    .from('messages')
+                    .select('*')
+                    .eq('id', payload.payload.messageId)
+                    .single();
+
+                if (message) {
+                    const { data: sender } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', message.sender_id)
+                        .single();
+
+                    if (sender && currentChatFriend && currentChatFriend.id === message.sender_id) {
+                        displayMessage(message, sender);
+                        scrollToBottom();
+                    }
+
+                    await updateConversationsList();
+                }
+            })
             .subscribe();
+
+        subscriptions.push(channel);
+    };
+
+    const subscribeToProfileUpdates = () => {
+        if (!currentUser || !currentUser.id) return;
+
+        const channel = supabase.channel(`profile-updates-${currentUser.id}`);
+
+        channel
+            .on('broadcast', { event: 'avatar_updated' }, async (payload) => {
+                const userId = payload.payload.userId;
+                const avatarUrl = payload.payload.avatarUrl;
+
+                if (friends[userId]) {
+                    friends[userId].avatar_url = avatarUrl;
+                    await updateConversationsList();
+
+                    if (currentChatFriend && currentChatFriend.id === userId) {
+                        currentChatFriend.avatar_url = avatarUrl;
+                        if (avatarUrl) {
+                            ui.chatAvatar.innerHTML = `<img src="${avatarUrl}" alt="${currentChatFriend.username}">`;
+                        } else {
+                            ui.chatAvatar.textContent = currentChatFriend.username[0].toUpperCase();
+                            ui.chatAvatar.innerHTML = '';
+                        }
+                    }
+                }
+            })
+            .on('broadcast', { event: 'username_updated' }, async (payload) => {
+                const userId = payload.payload.userId;
+                const newUsername = payload.payload.username;
+
+                if (friends[userId]) {
+                    friends[userId].username = newUsername;
+                    await updateConversationsList();
+
+                    if (currentChatFriend && currentChatFriend.id === userId) {
+                        currentChatFriend.username = newUsername;
+                        ui.chatFriendName.textContent = newUsername;
+                    }
+                }
+            })
+            .subscribe((status) => {
+            });
 
         subscriptions.push(channel);
     };
@@ -705,32 +878,31 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const handleNewMessage = async (message) => {
-        if (blockedUsers.has(message.sender_id)) return;
+        if (blockedUsers.has(message.sender_id)) {
+            return;
+        }
 
-        if (document.querySelector(`[data-message-id="${message.id}"]`)) return;
+        const existingElement = document.querySelector(`[data-message-id="${message.id}"]`);
+        if (existingElement) return;
 
-        const { data: sender } = await supabase.from('profiles').select('*').eq('id', message.sender_id).single();
+        const { data: sender, error: senderError } = await supabase.from('profiles').select('*').eq('id', message.sender_id).single();
         if (!sender) return;
 
         await updateConversationsList();
 
-        if (message.sender_id === currentUser.id) {
-            if (currentChatType === 'friend' && currentChatFriend?.id === message.receiver_id) {
-                displayMessage(message, currentUser);
-                scrollToBottom();
-            }
-            return;
-        }
+        if (currentChatType === 'friend' && currentChatFriend &&
+            (currentChatFriend.id === message.sender_id || currentChatFriend.id === message.receiver_id)) {
+            const displayUser = message.sender_id === currentUser.id ? currentUser : sender;
+            displayMessage(message, displayUser);
 
-        const shouldNotify = !isTabVisible || (currentChatType !== 'friend' || currentChatFriend?.id !== message.sender_id);
-
-        if (currentChatType === 'friend' && currentChatFriend?.id === message.sender_id) {
-            displayMessage(message, sender);
-            if (userSettings.readReceipts) {
+            if (userSettings.readReceipts && message.sender_id !== currentUser.id) {
                 await supabase.from('messages').update({ read: true }).eq('id', message.id);
             }
             scrollToBottom();
         }
+
+        const shouldNotify = message.sender_id !== currentUser.id &&
+            (!isTabVisible || (currentChatType !== 'friend' || currentChatFriend?.id !== message.sender_id));
 
         if (shouldNotify) {
             if (userSettings.notifications && 'Notification' in window && Notification.permission === 'granted') {
@@ -869,9 +1041,23 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.showFriendRequestsModal = () => {
+        updateURLPath('friend-requests');
         showModal(ui.friendRequestsModal);
         renderFriendRequests();
     };
+
+    const updateURLPath = (path) => {
+        currentPath = path;
+        if (window.history && window.history.pushState) {
+            window.history.pushState({ path }, '', `/#/${path}`);
+        }
+    };
+
+    window.addEventListener('popstate', (e) => {
+        if (e.state && e.state.path) {
+            currentPath = e.state.path;
+        }
+    });
 
     const renderFriendRequests = () => {
         if (friendRequests.length === 0) {
@@ -901,21 +1087,79 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.acceptFriendRequest = async (requestId) => {
-        await supabase.from('friendships').update({ status: 'accepted' }).eq('id', requestId);
+        const { data: request } = await supabase
+            .from('friendships')
+            .select('user_id, friend_id')
+            .eq('id', requestId)
+            .single();
+
+        if (!request) {
+            console.error('Friend request not found');
+            return;
+        }
+
+        const { error } = await supabase
+            .from('friendships')
+            .update({ status: 'accepted' })
+            .eq('id', requestId);
+
+        if (error) {
+            console.error('Error accepting friend request:', error);
+            showInfoModal('Error', 'Failed to accept friend request.');
+            return;
+        }
+
         await loadFriends();
         await loadFriendRequests();
         renderFriendRequests();
         await updateConversationsList();
+
+        const notifyChannel = supabase.channel(`friend-requests-${request.user_id}`);
+        await notifyChannel.subscribe();
+        await notifyChannel.send({
+            type: 'broadcast',
+            event: 'friend_accepted',
+            payload: { friendId: currentUser.id }
+        });
     };
 
     window.declineFriendRequest = async (requestId) => {
-        await supabase.from('friendships').delete().eq('id', requestId);
+        const { data: request } = await supabase
+            .from('friendships')
+            .select('user_id')
+            .eq('id', requestId)
+            .single();
+
+        if (!request) {
+            console.error('Friend request not found');
+            return;
+        }
+
+        const { error } = await supabase
+            .from('friendships')
+            .delete()
+            .eq('id', requestId);
+
+        if (error) {
+            console.error('Error declining friend request:', error);
+            return;
+        }
+
         await loadFriendRequests();
         renderFriendRequests();
+
+        const notifyChannel = supabase.channel(`friend-requests-${request.user_id}`);
+        await notifyChannel.subscribe();
+        await notifyChannel.send({
+            type: 'broadcast',
+            event: 'request_declined',
+            payload: { declinedBy: currentUser.id }
+        });
     };
 
     window.openChat = async (id, type) => {
         currentChatType = type;
+        updateURLPath(`chat/${id}`);
 
         if (type === 'friend') {
             currentChatFriend = friends[id];
@@ -980,81 +1224,30 @@ document.addEventListener('DOMContentLoaded', () => {
     const subscribeToTypingIndicators = (friendId) => {
         subscriptions.forEach(sub => {
             if (sub && sub.topic && sub.topic.includes('typing-')) {
-                sub.unsubscribe();
+                supabase.removeChannel(sub);
             }
         });
 
-        const typingChannel = supabase.channel(`typing-${currentUser.id}-${friendId}`);
+        const userId1 = currentUser.id;
+        const userId2 = friendId;
+        const channelName = `typing-${userId1 < userId2 ? userId1 : userId2}-${userId1 < userId2 ? userId2 : userId1}`;
+
+        const typingChannel = supabase.channel(channelName);
 
         typingChannel
             .on('broadcast', { event: 'typing' }, (payload) => {
                 if (payload.payload.userId !== currentUser.id) {
                     if (payload.payload.isTyping) {
-                        showTypingIndicator(friendId);
+                        ui.typingIndicator.classList.remove('hidden');
                     } else {
-                        hideTypingIndicator(friendId);
+                        ui.typingIndicator.classList.add('hidden');
                     }
                 }
             })
-            .subscribe();
-
-        subscriptions.push(typingChannel);
-    };
-
-    const showTypingIndicator = (friendId) => {
-        const friend = friends[friendId];
-        if (!friend || currentChatType !== 'friend' || currentChatFriend?.id !== friendId) return;
-
-        if (!ui.typingIndicator) {
-            const indicator = document.createElement('div');
-            indicator.id = 'typing-indicator';
-            indicator.className = 'typing-indicator';
-            indicator.innerHTML = `
-                <div class="typing-dots">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                </div>
-                <span class="typing-text">${friend.username} is typing...</span>
-            `;
-            indicator.style.cssText = `
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-                padding: 0.5rem 1rem;
-                color: var(--secondary-text);
-                font-size: 0.85rem;
-                font-style: italic;
-            `;
-
-            const dots = indicator.querySelector('.typing-dots');
-            dots.style.cssText = `
-                display: flex;
-                gap: 0.25rem;
-            `;
-
-            dots.querySelectorAll('span').forEach((span, i) => {
-                span.style.cssText = `
-                    width: 6px;
-                    height: 6px;
-                    border-radius: 50%;
-                    background: var(--secondary-text);
-                    animation: typing-bounce 1.4s infinite ease-in-out;
-                    animation-delay: ${i * 0.2}s;
-                `;
+            .subscribe((status) => {
             });
 
-            ui.messagesContainer.appendChild(indicator);
-            ui.typingIndicator = indicator;
-            scrollToBottom();
-        }
-    };
-
-    const hideTypingIndicator = (friendId) => {
-        if (ui.typingIndicator) {
-            ui.typingIndicator.remove();
-            ui.typingIndicator = null;
-        }
+        subscriptions.push(typingChannel);
     };
 
     const loadMessages = async (friendId) => {
@@ -1527,12 +1720,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     ui.messageForm.onsubmit = async (e) => {
         e.preventDefault();
+
         const content = ui.messageInput.value.trim();
-        if (!content && pendingFiles.length === 0) return;
+
+        if (!content && pendingFiles.length === 0) {
+            return;
+        }
+
 
         const messageData = {
             content,
             sender_id: currentUser.id,
+            receiver_id: currentChatFriend.id,
             created_at: new Date().toISOString()
         };
 
@@ -1544,12 +1743,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (pendingFiles.length > 0) {
             const file = pendingFiles[0];
             const fileExt = file.name.split('.').pop();
-            const fileName = `${currentUser.id}-avatar.${fileExt}`;
-            const filePath = `avatars/${fileName}`;
+            const fileName = `${Date.now()}-${currentUser.id}.${fileExt}`;
+            const filePath = `files/${fileName}`;
 
             const { data: uploadData } = await supabase.storage
                 .from('files')
-                .upload(filePath, file);
+                .upload(filePath, file, { upsert: true });
 
             if (uploadData) {
                 const { data: { publicUrl } } = supabase.storage
@@ -1564,63 +1763,68 @@ document.addEventListener('DOMContentLoaded', () => {
             pendingFiles = [];
         }
 
-        const tempId = `temp-${Date.now()}`;
-        messageData.id = tempId;
+        ui.messageInput.value = '';
+        replyingTo = null;
+        ui.replyPreview.classList.add('hidden');
 
-        if (currentChatType === 'friend') {
-            messageData.receiver_id = currentChatFriend.id;
+        const { data: insertedMessage, error } = await supabase
+            .from('messages')
+            .insert([messageData])
+            .select()
+            .single();
 
-            displayMessage(messageData, currentUser);
-            scrollToBottom();
-
-            const { data: insertedMessage } = await supabase.from('messages').insert([messageData]).select().single();
-
-            if (insertedMessage) {
-                const tempElement = document.querySelector(`[data-message-id="${tempId}"]`);
-                if (tempElement) {
-                    tempElement.dataset.messageId = insertedMessage.id;
-                }
-            }
-        }
-
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
+        if (error) {
+            console.error('Message insert error:', error);
+            showInfoModal('Error', 'Failed to send message. Please try again.');
             return;
         }
 
-        ui.messageInput.value = '';
-        ui.messageInput.style.height = 'auto';
-        replyingTo = null;
-        ui.replyPreview.classList.add('hidden');
+        displayMessage(insertedMessage, currentUser);
+        scrollToBottom();
+
         await updateConversationsList();
+
+        const notifyChannel = supabase.channel(`messages-${currentChatFriend.id}`);
+        await notifyChannel.subscribe();
+
+        await notifyChannel.send({
+            type: 'broadcast',
+            event: 'new_message',
+            payload: { messageId: insertedMessage.id }
+        });
     };
+
+    let typingChannels = {};
 
     ui.messageInput.addEventListener('input', () => {
         adjustTextareaHeight();
 
-        if (typingTimeout) clearTimeout(typingTimeout);
+        if (currentChatFriend) {
+            clearTimeout(typingTimeout);
 
-        if (currentChatType === 'friend' && currentChatFriend) {
-            const typingChannel = supabase.channel(`typing-${currentUser.id}-${currentChatFriend.id}`);
+            const userId1 = currentUser.id;
+            const userId2 = currentChatFriend.id;
+            const channelName = `typing-${userId1 < userId2 ? userId1 : userId2}-${userId1 < userId2 ? userId2 : userId1}`;
 
-            typingChannel.send({
+            if (!typingChannels[channelName]) {
+                typingChannels[channelName] = supabase.channel(channelName);
+                typingChannels[channelName].subscribe();
+            }
+
+            typingChannels[channelName].send({
                 type: 'broadcast',
                 event: 'typing',
-                payload: { isTyping: true, userId: currentUser.id }
+                payload: { userId: currentUser.id, isTyping: true }
             });
-        }
 
-        typingTimeout = setTimeout(() => {
-            if (currentChatType === 'friend' && currentChatFriend) {
-                const typingChannel = supabase.channel(`typing-${currentUser.id}-${currentChatFriend.id}`);
-
-                typingChannel.send({
+            typingTimeout = setTimeout(() => {
+                typingChannels[channelName].send({
                     type: 'broadcast',
                     event: 'typing',
-                    payload: { isTyping: false, userId: currentUser.id }
+                    payload: { userId: currentUser.id, isTyping: false }
                 });
-            }
-        }, 1000);
+            }, 2000);
+        }
     });
 
     ui.fileInput.addEventListener('change', async (e) => {
@@ -1664,7 +1868,9 @@ document.addEventListener('DOMContentLoaded', () => {
     ui.addFriendForm.onsubmit = async (e) => {
         e.preventDefault();
         const username = ui.friendUsernameInput.value.trim();
-        if (!username) return;
+        if (!username) {
+            return;
+        }
 
         const { data: targetUser } = await supabase
             .from('profiles')
@@ -1686,22 +1892,44 @@ document.addEventListener('DOMContentLoaded', () => {
             .from('friendships')
             .select('*')
             .or(`and(user_id.eq.${currentUser.id},friend_id.eq.${targetUser.id}),and(user_id.eq.${targetUser.id},friend_id.eq.${currentUser.id})`)
-            .single();
+            .maybeSingle();
 
         if (existing) {
             showInfoModal('Request exists', 'Friend request already exists or you are already friends.');
             return;
         }
 
-        await supabase.from('friendships').insert([{
-            user_id: currentUser.id,
-            friend_id: targetUser.id,
-            status: 'pending'
-        }]);
+        const { data: newRequest, error } = await supabase
+            .from('friendships')
+            .insert([{
+                user_id: currentUser.id,
+                friend_id: targetUser.id,
+                status: 'pending'
+            }])
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Error sending friend request:', error);
+            showInfoModal('Error', 'Failed to send friend request.');
+            return;
+        }
 
         ui.friendUsernameInput.value = '';
         hideModal();
         showInfoModal('Request sent', 'Friend request sent successfully!');
+
+        const targetUserId = targetUser.id;
+        const notifyChannel = supabase.channel(`friend-requests-${targetUserId}`);
+        notifyChannel.subscribe(async (status) => {
+            if (status === 'SUBSCRIBED') {
+                await notifyChannel.send({
+                    type: 'broadcast',
+                    event: 'friend_request',
+                    payload: { fromUserId: currentUser.id }
+                });
+            }
+        });
     };
 
     const showModal = (modal) => {
@@ -1735,8 +1963,11 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     ui.closeModalBtn.onclick = hideModal;
+
     ui.modalContainer.onclick = (e) => {
-        if (e.target === ui.modalContainer) hideModal();
+        if (e.target === ui.modalContainer) {
+            hideModal();
+        }
     };
 
     document.addEventListener('click', (e) => {
@@ -1753,6 +1984,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     ui.backToFriendsBtn.onclick = () => {
+        updateURLPath('messages');
         ui.sidebar.classList.remove('hidden');
         ui.chatContainer.classList.remove('active');
     };
@@ -1796,22 +2028,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    ui.unfriendBtn.onclick = async () => {
+    ui.blockUserBtn.onclick = async () => {
         if (currentChatType === 'friend') {
-            showConfirmationModal(`Remove ${currentChatFriend.username}?`, 'This user will be removed from your friends list.', async () => {
-                await supabase.from('friendships').delete()
-                    .or(`and(user_id.eq.${currentUser.id}, friend_id.eq.${currentChatFriend.id}), and(user_id.eq.${currentChatFriend.id}, friend_id.eq.${currentUser.id})`);
+            showConfirmationModal(`Block ${currentChatFriend.username}?`, 'This user will be blocked and you will not receive messages from them.', async () => {
 
-                await loadFriends();
+                const { error } = await supabase
+                    .from('blocked_users')
+                    .insert([{
+                        user_id: currentUser.id,
+                        blocked_user_id: currentChatFriend.id
+                    }]);
+
+                if (error) {
+                    console.error('Error blocking user:', error);
+                    showInfoModal('Error', 'Failed to block user.');
+                    return;
+                }
+
+
+                await loadBlockedUsers();
                 hideModal();
                 ui.chatView.classList.add('hidden');
                 ui.welcomeScreen.classList.remove('hidden');
-
-                if (window.innerWidth <= 768) {
-                    ui.sidebar.classList.remove('hidden');
-                }
-
                 await updateConversationsList();
+
             });
         }
     };
@@ -1998,23 +2238,52 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const base64 = await fileToBase64(file);
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${currentUser.id}-avatar.${fileExt}`;
+            const filePath = `avatars/${fileName}`;
 
-            await supabase.from('profiles').update({
-                avatar_url: base64
-            }).eq('id', currentUser.id);
+            const { error: uploadError } = await supabase.storage
+                .from('avatars')
+                .upload(filePath, file, { upsert: true });
 
-            currentUser.avatar_url = base64;
-            ui.userAvatar.innerHTML = `<img src="${base64}" alt="${currentUser.username}">`;
-            ui.settingsAvatar.innerHTML = `<img src="${base64}" alt="${currentUser.username}">`;
+            if (uploadError) throw uploadError;
 
-            showInfoModal('Success', 'Profile picture updated successfully!');
+            const { data: { publicUrl } } = supabase.storage
+                .from('avatars')
+                .getPublicUrl(filePath);
+
+            const { error: updateError } = await supabase
+                .from('profiles')
+                .update({ avatar_url: publicUrl })
+                .eq('id', currentUser.id);
+
+            if (updateError) throw updateError;
+
+
+            currentUser.avatar_url = publicUrl;
+            ui.settingsAvatar.innerHTML = `<img src="${publicUrl}" alt="${currentUser.username}">`;
+            ui.userAvatar.innerHTML = `<img src="${publicUrl}" alt="${currentUser.username}">`;
+
+            e.target.value = '';
+
+            for (const friendId in friends) {
+                const channel = supabase.channel(`profile-updates-${friendId}`);
+                channel.subscribe(async (status) => {
+                    if (status === 'SUBSCRIBED') {
+                        await channel.send({
+                            type: 'broadcast',
+                            event: 'avatar_updated',
+                            payload: { userId: currentUser.id, avatarUrl: publicUrl }
+                        });
+                    }
+                });
+            }
+
         } catch (error) {
-            console.error('Upload error:', error);
-            showInfoModal('Upload failed', 'Could not upload image. Please try again.');
+            console.error('Avatar upload error:', error);
+            showInfoModal('Upload failed', 'Could not upload avatar. Please try again.');
+            e.target.value = '';
         }
-
-        e.target.value = '';
     };
 
     ui.changeUsernameBtn.onclick = () => {
@@ -2096,85 +2365,104 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     ui.acceptCallBtn.onclick = async () => {
+
+        hideModal();
         ui.incomingCallAudio.pause();
         ui.incomingCallAudio.currentTime = 0;
-        hideModal();
-
-        if (incomingCallData?.callInviteId) {
-            await supabase.from('call_invites').update({ status: 'accepted' }).eq('id', incomingCallData.callInviteId);
-        }
-
-        const startTime = Date.now();
 
         try {
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            localStream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: true
+            });
 
-            if (mediaConnection) {
-                mediaConnection.answer(localStream);
+            ui.callSection.classList.remove('hidden');
+            ui.chatView.classList.add('hidden');
 
-                mediaConnection.on('stream', (remoteStream) => {
-                    showCallUI();
-                    addVideoStream('local', localStream, currentUser);
-                    addVideoStream('remote', remoteStream, friends[incomingCallData.from]);
+            const localVideo = document.createElement('video');
+            localVideo.srcObject = localStream;
+            localVideo.autoplay = true;
+            localVideo.muted = true;
+            localVideo.playsInline = true;
+            localVideo.id = 'local-video';
+
+            ui.videoGrid.innerHTML = '';
+            ui.videoGrid.appendChild(localVideo);
+
+            peer.on('call', (call) => {
+                call.answer(localStream);
+
+                call.on('stream', (remoteStream) => {
+                    const remoteVideo = document.createElement('video');
+                    remoteVideo.srcObject = remoteStream;
+                    remoteVideo.autoplay = true;
+                    remoteVideo.playsInline = true;
+                    remoteVideo.id = 'remote-video';
+                    ui.videoGrid.appendChild(remoteVideo);
                 });
 
-                mediaConnection.on('close', async () => {
-                    const duration = Math.floor((Date.now() - startTime) / 1000);
-                    await saveCallRecord(incomingCallData.from, duration);
-                    if (incomingCallData?.callInviteId) {
-                        await supabase.from('call_invites').update({ status: 'completed' }).eq('id', incomingCallData.callInviteId);
-                    }
-                    endCall();
+                call.on('error', (err) => {
+                    console.error('Call error:', err);
                 });
-            } else {
-                const { data: friendProfile } = await supabase
-                    .from('profiles')
-                    .select('peer_id')
-                    .eq('id', incomingCallData.from)
-                    .single();
 
-                if (friendProfile?.peer_id) {
-                    const call = peer.call(friendProfile.peer_id, localStream, {
-                        metadata: { from: currentUser.id, callInviteId: incomingCallData.callInviteId }
-                    });
+                mediaConnection = call;
+            });
 
-                    mediaConnection = call;
+            isInCall = true;
 
-                    call.on('stream', (remoteStream) => {
-                        showCallUI();
-                        addVideoStream('local', localStream, currentUser);
-                        addVideoStream('remote', remoteStream, friends[incomingCallData.from]);
-                    });
-
-                    call.on('close', async () => {
-                        const duration = Math.floor((Date.now() - startTime) / 1000);
-                        await saveCallRecord(incomingCallData.from, duration);
-                        if (incomingCallData?.callInviteId) {
-                            await supabase.from('call_invites').update({ status: 'completed' }).eq('id', incomingCallData.callInviteId);
+            const callChannel = supabase.channel(`call-invite-${incomingCallData.from}`);
+            callChannel.subscribe(async (status) => {
+                if (status === 'SUBSCRIBED') {
+                    await callChannel.send({
+                        type: 'broadcast',
+                        event: 'call_accepted',
+                        payload: {
+                            acceptedBy: currentUser.id,
+                            accepterPeerId: peer.id
                         }
-                        endCall();
                     });
                 }
-            }
+            });
 
         } catch (error) {
-            showInfoModal('Media access denied', 'Could not access camera/microphone. Please check your permissions.');
+            console.error('Error accepting call:', error);
+            console.error('Error name:', error.name);
+            console.error('Error message:', error.message);
+
+            let errorMsg = 'Could not access camera/microphone.';
+            if (error.name === 'NotAllowedError') {
+                errorMsg = 'Camera/microphone permission denied. Please allow access in your browser settings.';
+            } else if (error.name === 'NotFoundError') {
+                errorMsg = 'No camera or microphone found on this device.';
+            } else if (error.name === 'NotReadableError') {
+                errorMsg = 'Camera/microphone is already in use by another application.';
+            } else if (error.name === 'OverconstrainedError') {
+                errorMsg = 'No camera/microphone meets the requirements.';
+            } else if (error.name === 'SecurityError') {
+                errorMsg = 'Camera/microphone access blocked. This app requires HTTPS on mobile devices.';
+            }
+
+            showInfoModal('Media Error', errorMsg + '\n\nProtocol: ' + window.location.protocol + '\nSecure: ' + window.isSecureContext);
         }
     };
 
     ui.declineCallBtn.onclick = async () => {
+        hideModal();
         ui.incomingCallAudio.pause();
         ui.incomingCallAudio.currentTime = 0;
-        hideModal();
 
-        if (incomingCallData?.callInviteId) {
-            await supabase.from('call_invites').update({ status: 'declined' }).eq('id', incomingCallData.callInviteId);
-        }
+        const callChannel = supabase.channel(`call-invite-${incomingCallData.from}`);
+        callChannel.subscribe(async (status) => {
+            if (status === 'SUBSCRIBED') {
+                await callChannel.send({
+                    type: 'broadcast',
+                    event: 'call_declined',
+                    payload: { declinedBy: currentUser.id }
+                });
+            }
+        });
 
-        if (mediaConnection) {
-            mediaConnection.close();
-            mediaConnection = null;
-        }
+        incomingCallData = null;
     };
 
     const showOutgoingCallUI = (friendName) => {
@@ -2498,11 +2786,35 @@ document.addEventListener('DOMContentLoaded', () => {
         document.addEventListener('touchend', dragEnd, { passive: true });
 
         ui.settingsModalContainer.addEventListener('click', (e) => {
-            if (e.target === ui.settingsModalContainer) {
+            if (e.target === ui.settingsModalContainer && window.innerWidth > 768) {
                 hideSettingsModal();
             }
         });
     };
+
+    ui.chatOptionsModal.addEventListener('click', (e) => {
+        if (e.target === ui.chatOptionsModal && window.innerWidth > 768) {
+            hideModal();
+        }
+    });
+
+    ui.friendProfileModal.addEventListener('click', (e) => {
+        if (e.target === ui.friendProfileModal && window.innerWidth > 768) {
+            hideModal();
+        }
+    });
+
+    ui.confirmationModal.addEventListener('click', (e) => {
+        if (e.target === ui.confirmationModal && window.innerWidth > 768) {
+            hideModal();
+        }
+    });
+
+    ui.infoModal.addEventListener('click', (e) => {
+        if (e.target === ui.infoModal && window.innerWidth > 768) {
+            hideModal();
+        }
+    });
 
     setupSettingsDrag();
 
