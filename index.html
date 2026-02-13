@@ -20,10 +20,6 @@
 </head>
 
 <body>
-    <div id="app-loader">
-        <div class="spinner"></div>
-    </div>
-
     <div id="auth-container" class="hidden">
         <div class="auth-card">
             <h1 class="auth-title">Peer 2 Peer</h1>
@@ -82,7 +78,6 @@
             </div>
             <div class="sidebar-actions">
                 <button id="add-friend-btn"><i class="fa-solid fa-user-plus"></i> Friend</button>
-                <button id="create-group-btn"><i class="fa-solid fa-users"></i> Group</button>
             </div>
             <nav id="friends-list"></nav>
         </aside>
@@ -101,7 +96,10 @@
                             <div id="chat-avatar" class="avatar"></div>
                             <div id="chat-friend-status" class="status-indicator"></div>
                         </div>
-                        <span id="chat-friend-name"></span>
+                        <div class="chat-header-text">
+                            <span id="chat-friend-name"></span>
+                            <span id="chat-status-text" class="header-status"></span>
+                        </div>
                     </div>
                     <div class="chat-actions">
                         <button id="call-btn"><i class="fa-solid fa-video"></i></button>
@@ -119,20 +117,22 @@
                     <button id="cancel-reply-btn"><i class="fa-solid fa-times"></i></button>
                 </div>
                 <form id="message-form">
-    <div class="message-input-wrapper">
-        <textarea id="message-input" placeholder="Type a message..." autocomplete="off" rows="1"></textarea>
-        <button type="submit" title="Send Message">
-            <i class="fa-solid fa-paper-plane"></i>
-        </button>
-    </div>
-</form>
+                    <div class="message-input-wrapper">
+                        <textarea id="message-input" placeholder="Type a message..." autocomplete="off"
+                            rows="1"></textarea>
+                        <button type="submit" title="Send Message">
+                            <i class="fa-solid fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </form>
             </div>
         </main>
     </div>
 
     <div id="modal-container" class="hidden">
         <div id="modal-content">
-            <button id="close-modal-btn" class="close-btn">&times;</button>
+            <button id="close-modal-btn" class="close-btn">×</button>
+
             <div id="add-friend-modal" class="hidden">
                 <h2>Add Friend</h2>
                 <p>Enter your friend's exact username.</p>
@@ -141,19 +141,12 @@
                     <button type="submit">Send Request</button>
                 </form>
             </div>
+
             <div id="friend-requests-modal" class="hidden">
                 <h2>Friend Requests</h2>
                 <div id="requests-list"></div>
             </div>
-            <div id="create-group-modal" class="hidden">
-                <h2>Create Group</h2>
-                <p>Choose a name and select members for your group.</p>
-                <form id="create-group-form">
-                    <input type="text" id="group-name-input" placeholder="Group name..." autocomplete="off" required>
-                    <div id="group-members-list"></div>
-                    <button type="submit">Create Group</button>
-                </form>
-            </div>
+
             <div id="incoming-call-modal" class="hidden">
                 <div class="caller-info">
                     <div id="caller-avatar" class="avatar"></div>
@@ -165,6 +158,7 @@
                     <button id="accept-call-btn" class="success"><i class="fa-solid fa-phone"></i></button>
                 </div>
             </div>
+
             <div id="confirmation-modal" class="hidden">
                 <h2 id="confirmation-title">Are you sure?</h2>
                 <p id="confirmation-message"></p>
@@ -173,6 +167,7 @@
                     <button id="confirm-btn" class="danger">Confirm</button>
                 </div>
             </div>
+
             <div id="info-modal" class="hidden">
                 <h2 id="info-title">Notification</h2>
                 <p id="info-message"></p>
@@ -202,31 +197,7 @@
                     </button>
                 </div>
             </div>
-            <div id="group-options-modal" class="hidden">
-                <h2>Group Settings</h2>
-                <div class="friend-options-list">
-                    <button class="option-btn" id="edit-group-btn">
-                        <i class="fa-solid fa-pen"></i>
-                        <span>Edit Group</span>
-                    </button>
-                    <button class="option-btn danger" id="leave-group-btn">
-                        <i class="fa-solid fa-right-from-bracket"></i>
-                        <span>Leave Group</span>
-                    </button>
-                </div>
-            </div>
-            <div id="edit-group-modal" class="hidden">
-                <h2>Edit Group</h2>
-                <form id="edit-group-form">
-                    <div class="group-avatar-section">
-                        <div id="edit-group-avatar" class="avatar large-avatar"></div>
-                        <input type="file" id="group-avatar-upload" accept="image/*" class="hidden">
-                        <button type="button" id="change-group-avatar-btn" class="secondary-btn">Change Picture</button>
-                    </div>
-                    <input type="text" id="edit-group-name-input" placeholder="Group name..." autocomplete="off" required>
-                    <button type="submit">Save Changes</button>
-                </form>
-            </div>
+
             <div id="friend-profile-modal" class="hidden">
                 <div class="profile-header">
                     <div id="profile-avatar" class="avatar large-avatar"></div>
@@ -251,6 +222,7 @@
                     <button id="call-user-btn"><i class="fa-solid fa-video"></i> Call</button>
                 </div>
             </div>
+
             <div id="change-username-modal" class="hidden">
                 <h2>Change Username</h2>
                 <p>Enter your new username.</p>
@@ -260,6 +232,7 @@
                     <button type="submit">Update Username</button>
                 </form>
             </div>
+
             <div id="edit-message-modal" class="hidden">
                 <h2>Edit Message</h2>
                 <form id="edit-message-form">
@@ -267,6 +240,7 @@
                     <button type="submit">Save Changes</button>
                 </form>
             </div>
+
             <div id="file-preview-modal" class="hidden">
                 <h2>Send File</h2>
                 <div id="file-preview-content"></div>
@@ -279,24 +253,21 @@
     </div>
 
     <section id="call-section" class="hidden">
-        <div id="call-container" class="call-container">
-            <div id="chat-overlay-backdrop" class="hidden"></div>
-            <div id="chat-overlay" class="hidden">
-                <div id="chat-overlay-header">
-                    <div class="drag-handle"></div>
-                </div>
-                <div id="chat-overlay-content">
-                </div>
-            </div>
-            <div id="video-grid"></div>
-            <div class="main-controls-bar">
-                <button id="mute-btn" title="Mute/Unmute"><i class="fa-solid fa-microphone"></i></button>
-                <button id="toggle-video-btn" title="Toggle Camera" class="active"><i
-                        class="fa-solid fa-video"></i></button>
-                <button id="share-screen-btn" title="Share Screen"><i class="fa-solid fa-display"></i></button>
-                <button id="toggle-chat-btn" title="Toggle Chat"><i class="fa-solid fa-comment"></i></button>
-                <button id="stop-call-btn" title="Leave Call" class="danger"><i class="fa-solid fa-phone"></i></button>
-            </div>
+        <h3 id="call-title"></h3>
+        <div id="video-grid" class="video-grid"></div>
+        <div class="call-controls">
+            <button id="mute-btn" class="call-control-btn active">
+                <i class="fa-solid fa-microphone"></i>
+            </button>
+            <button id="toggle-video-btn" class="call-control-btn active">
+                <i class="fa-solid fa-video"></i>
+            </button>
+            <button id="stop-call-btn" class="call-control-btn end-call">
+                <i class="fa-solid fa-phone-slash"></i>
+            </button>
+            <button id="share-screen-btn" class="call-control-btn">
+                <i class="fa-solid fa-desktop"></i>
+            </button>
         </div>
     </section>
 

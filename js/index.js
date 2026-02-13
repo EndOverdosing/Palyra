@@ -2,14 +2,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
     const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const { createClient } = supabase;
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        realtime: {
+            params: {
+                eventsPerSecond: 10
+            }
+        }
+    });
+
+    window.supabase = supabaseClient;
 
     const ui = {
         settingsModalContainer: document.getElementById('settings-modal-container'),
         settingsModalPane: document.getElementById('settings-modal'),
         settingsModalHeader: document.getElementById('settings-modal-header'),
         settingsModalBody: document.getElementById('settings-modal-body'),
-        appLoader: document.getElementById('app-loader'),
         authContainer: document.getElementById('auth-container'),
         mainApp: document.getElementById('main-app'),
         loginForm: document.getElementById('login-form'),
@@ -23,7 +31,6 @@ document.addEventListener('DOMContentLoaded', () => {
         logoutBtn: document.getElementById('logout-btn'),
         settingsBtn: document.getElementById('settings-btn'),
         addFriendBtn: document.getElementById('add-friend-btn'),
-        createGroupBtn: document.getElementById('create-group-btn'),
         friendsList: document.getElementById('friends-list'),
         chatContainer: document.getElementById('chat-container'),
         welcomeScreen: document.getElementById('welcome-screen'),
@@ -31,6 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chatHeader: document.getElementById('chat-header'),
         chatAvatar: document.getElementById('chat-avatar'),
         chatFriendName: document.getElementById('chat-friend-name'),
+        chatStatusText: document.getElementById('chat-status-text'),
         backToFriendsBtn: document.getElementById('back-to-friends-btn'),
         callBtn: document.getElementById('call-btn'),
         chatOptionsBtn: document.getElementById('chat-options-btn'),
@@ -42,10 +50,6 @@ document.addEventListener('DOMContentLoaded', () => {
         addFriendModal: document.getElementById('add-friend-modal'),
         addFriendForm: document.getElementById('add-friend-form'),
         friendUsernameInput: document.getElementById('friend-username-input'),
-        createGroupModal: document.getElementById('create-group-modal'),
-        createGroupForm: document.getElementById('create-group-form'),
-        groupNameInput: document.getElementById('group-name-input'),
-        groupMembersList: document.getElementById('group-members-list'),
         incomingCallModal: document.getElementById('incoming-call-modal'),
         callerAvatar: document.getElementById('caller-avatar'),
         callerName: document.getElementById('caller-name'),
@@ -69,10 +73,6 @@ document.addEventListener('DOMContentLoaded', () => {
         infoOkBtn: document.getElementById('info-ok-btn'),
         toggleChatBtn: document.getElementById('toggle-chat-btn'),
         incomingCallAudio: document.getElementById('incoming-call-audio'),
-        chatOverlay: document.getElementById('chat-overlay'),
-        chatOverlayHeader: document.getElementById('chat-overlay-header'),
-        chatOverlayContent: document.getElementById('chat-overlay-content'),
-        chatOverlayBackdrop: document.getElementById('chat-overlay-backdrop'),
         typingIndicator: document.getElementById('typing-indicator'),
         settingsModal: document.getElementById('settings-modal'),
         themeToggle: document.getElementById('theme-toggle'),
@@ -117,14 +117,17 @@ document.addEventListener('DOMContentLoaded', () => {
         fileCaptionInput: document.getElementById('file-caption-input'),
         friendRequestsModal: document.getElementById('friend-requests-modal'),
         requestsList: document.getElementById('requests-list'),
+        closeChatPaneBtn: document.getElementById('close-chat-pane-btn'),
+        callTitle: document.getElementById('call-title'),
     };
 
-    let peer, localStream, dataConnection, mediaConnection, currentUser, currentChatFriend, friends = {}, groups = {}, subscriptions = [];
+    let peer, localStream, dataConnection, mediaConnection, currentUser, currentChatFriend, friends = {}, subscriptions = [];
     let callState = { isMuted: false, isVideoEnabled: true, isScreenSharing: false };
     let incomingCallData = null;
     let onlineUsers = new Set();
     let isInCall = false;
     let typingTimeout = null;
+
     let keepAliveInterval = null;
     let currentChatType = 'friend';
     let blockedUsers = new Set();
@@ -133,10 +136,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let replyingTo = null;
     let editingMessage = null;
     let pendingFiles = [];
-    let selectedGroupMembers = new Set();
     let conversations = [];
-    let callHistory = new Map();
-    
+
     let userSettings = {
         theme: 'dark',
         fontSize: 'medium',
@@ -146,13 +147,135 @@ document.addEventListener('DOMContentLoaded', () => {
         readReceipts: true
     };
 
-    const showLoader = (show) => ui.appLoader.classList.toggle('hidden', !show);
+    const HEARTBEAT_INTERVAL = 3000;
+    let heartbeatTimer = null;
+    let lastActivityTime = Date.now();
+    let isTabVisible = true;
+
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let currentSwipeElement = null;
+    let swipeThreshold = 60;
+
+    function initializeMessageSwipe() {
+        const messagesContainer = ui.messagesContainer;
+        if (!messagesContainer) {
+            return;
+        }
+
+        if (messagesContainer.dataset.swipeInitialized) return;
+        messagesContainer.dataset.swipeInitialized = 'true';
+
+        messagesContainer.addEventListener('touchstart', (e) => {
+            const messageElement = e.target.closest('.message');
+            if (!messageElement) return;
+
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            currentSwipeElement = messageElement;
+
+            const timestamp = messageElement.querySelector('.message-timestamp-reveal');
+            if (timestamp) timestamp.style.opacity = '0';
+        }, { passive: true });
+
+        messagesContainer.addEventListener('touchmove', (e) => {
+            if (!currentSwipeElement) return;
+
+            const touchX = e.touches[0].clientX;
+            const touchY = e.touches[0].clientY;
+            const deltaX = touchX - touchStartX;
+            const deltaY = touchY - touchStartY;
+
+            if (Math.abs(deltaY) > Math.abs(deltaX)) {
+                currentSwipeElement = null;
+                return;
+            }
+
+            const isSentMessage = currentSwipeElement.classList.contains('sent');
+            const isReceivedMessage = currentSwipeElement.classList.contains('received');
+
+            if ((isSentMessage && deltaX < 0) || (isReceivedMessage && deltaX > 0)) {
+                e.preventDefault();
+                const maxSwipe = 80;
+                const swipeAmount = Math.min(Math.abs(deltaX), maxSwipe);
+                const direction = deltaX < 0 ? -1 : 1;
+
+                currentSwipeElement.style.transform = `translateX(${swipeAmount * direction}px)`;
+
+                const timestamp = currentSwipeElement.querySelector('.message-timestamp-reveal');
+                if (timestamp) {
+                    const opacity = Math.min(swipeAmount / swipeThreshold, 1);
+                    timestamp.style.opacity = opacity;
+                }
+            }
+        }, { passive: false });
+
+        messagesContainer.addEventListener('touchend', () => {
+            if (currentSwipeElement) {
+                currentSwipeElement.style.transform = '';
+                const timestamp = currentSwipeElement.querySelector('.message-timestamp-reveal');
+                if (timestamp) {
+                    setTimeout(() => { timestamp.style.opacity = '0'; }, 300);
+                }
+                currentSwipeElement = null;
+            }
+        });
+    }
+
+    function fileToBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        isTabVisible = !document.hidden;
+        if (isTabVisible) {
+            lastActivityTime = Date.now();
+            if (currentUser) {
+                updateUserPresence();
+            }
+        }
+    });
+
+    function startHeartbeat() {
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
+        heartbeatTimer = setInterval(async () => {
+            if (currentUser && userSettings.onlineStatus) {
+                await supabase.from('profiles').update({
+                    last_seen: new Date().toISOString(),
+                    is_online: true
+                }).eq('id', currentUser.id);
+            }
+        }, HEARTBEAT_INTERVAL);
+    }
+
+    async function updateUserPresence() {
+        if (currentUser && userSettings.onlineStatus) {
+            await supabase.from('profiles').update({
+                last_seen: new Date().toISOString(),
+                is_online: true
+            }).eq('id', currentUser.id);
+        }
+    }
+
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+
+    ui.callBtn.onclick = async () => {
+        await startCall();
+    };
+
+    ui.chatOptionsBtn.onclick = () => {
+        showModal(ui.chatOptionsModal);
+    };
+
     const showAuth = (show) => ui.authContainer.classList.toggle('hidden', !show);
     const showApp = (show) => ui.mainApp.classList.toggle('hidden', !show);
-    const setAuthStatus = (message, isError = true) => {
-        ui.authStatus.textContent = message;
-        ui.authStatus.style.color = isError ? 'var(--error)' : 'var(--success)';
-    };
 
     const loadSettings = () => {
         const saved = localStorage.getItem('userSettings');
@@ -176,6 +299,12 @@ document.addEventListener('DOMContentLoaded', () => {
         ui.messageSoundToggle.checked = userSettings.messageSound;
         ui.onlineStatusToggle.checked = userSettings.onlineStatus;
         ui.readReceiptsToggle.checked = userSettings.readReceipts;
+
+        ui.themeToggle.onchange = () => {
+            userSettings.theme = ui.themeToggle.checked ? 'dark' : 'light';
+            saveSettings();
+            applySettings();
+        };
     };
 
     const startKeepAlive = () => {
@@ -209,64 +338,98 @@ document.addEventListener('DOMContentLoaded', () => {
 
         peer.on('call', handleIncomingCall);
 
-        peer.on('error', (error) => {
-            console.error('Peer error:', error);
-            if (error.type === 'network' || error.type === 'server-error') {
+        peer.on('error', (err) => {
+            if (err.type === 'peer-unavailable' || err.message.includes('Could not connect to peer')) {
+                showCallOverlay('User Offline', 'The person you\'re trying to call is currently offline. Please try again later.', 'error');
+            }
+
+            if (err.type === 'network' || err.type === 'server-error') {
                 setTimeout(() => initializePeer(userId), 5000);
             }
         });
     };
 
     const handleAuth = async () => {
-        showLoader(true);
         const { data: { session } } = await supabase.auth.getSession();
 
         if (session?.user) {
-            await loadUserData(session.user.id);
-            showLoader(false);
+            const loaded = await loadUserData(session.user.id);
+
+            if (!loaded) {
+                await supabase.auth.signOut();
+                showAuth(true);
+                showInfoModal('Account Error', 'Your account could not be loaded. Please sign in again.');
+                return;
+            }
+
             showApp(true);
         } else {
-            showLoader(false);
             showAuth(true);
         }
     };
 
     const loadUserData = async (userId) => {
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single();
-        if (!profile) return;
+        try {
+            const { data: profile, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', userId)
+                .single();
 
-        currentUser = profile;
-        ui.usernameDisplay.textContent = profile.username;
-        ui.userAvatar.textContent = profile.username[0].toUpperCase();
-        ui.settingsUsername.textContent = profile.username;
-        ui.settingsAvatar.textContent = profile.username[0].toUpperCase();
+            if (error || !profile) {
+                console.error('Profile load error:', error);
+                return false;
+            }
 
-        if (profile.avatar_url) {
-            ui.userAvatar.innerHTML = `<img src="${profile.avatar_url}" alt="${profile.username}">`;
-            ui.settingsAvatar.innerHTML = `<img src="${profile.avatar_url}" alt="${profile.username}">`;
+            currentUser = profile;
+            ui.usernameDisplay.textContent = profile.username;
+            ui.userAvatar.textContent = profile.username[0].toUpperCase();
+            ui.settingsUsername.textContent = profile.username;
+            ui.settingsAvatar.textContent = profile.username[0].toUpperCase();
+
+            if (profile.avatar_url) {
+                ui.userAvatar.innerHTML = `<img src="${profile.avatar_url}" alt="${profile.username}">`;
+                ui.settingsAvatar.innerHTML = `<img src="${profile.avatar_url}" alt="${profile.username}">`;
+            }
+
+            await supabase.from('profiles').update({
+                is_online: userSettings.onlineStatus,
+                last_seen: new Date().toISOString()
+            }).eq('id', userId);
+
+            await loadFriends();
+            await loadFriendRequests();
+            await loadBlockedUsers();
+            await checkPendingCallInvites();
+
+            subscribeToPresence();
+            subscribeToMessages();
+            subscribeToFriendRequests();
+            subscribeToFriendships();
+            subscribeToCallInvites();
+
+            initializePeer(userId);
+            startKeepAlive();
+            startHeartbeat();
+            loadSettings();
+
+            return true;
+        } catch (error) {
+            console.error('Failed to load user data:', error);
+            return false;
         }
-
-        await supabase.from('profiles').update({
-            is_online: userSettings.onlineStatus,
-            last_seen: new Date().toISOString()
-        }).eq('id', userId);
-
-        await loadFriends();
-        await loadGroups();
-        await loadFriendRequests();
-        await loadBlockedUsers();
-        subscribeToPresence();
-        subscribeToMessages();
-        subscribeToFriendRequests();
-        subscribeToFriendships();
-        subscribeToGroups();
-        subscribeToGroupMessages();
-        initializePeer(userId);
-        startKeepAlive();
-        loadSettings();
     };
 
+    let loadFriendsTimeout = null;
+    let isLoadingFriends = false;
+
     const loadFriends = async () => {
+        if (isLoadingFriends) {
+            return;
+        }
+
+        isLoadingFriends = true;
+
         const { data: friendships } = await supabase
             .from('friendships')
             .select('*, friend:profiles!friendships_friend_id_fkey(*)')
@@ -279,55 +442,54 @@ document.addEventListener('DOMContentLoaded', () => {
             .eq('friend_id', currentUser.id)
             .eq('status', 'accepted');
 
-        friends = {};
-        [...(friendships || []), ...(reverseFriendships || [])].forEach(f => {
+        friends = Object.create(null);
+
+        const uniqueFriendIds = new Set();
+
+        (friendships || []).forEach(f => {
             const friend = f.friend;
-            if (friend && friend.id !== currentUser.id) {
+            if (friend && friend.id !== currentUser.id && !uniqueFriendIds.has(friend.id)) {
                 friends[friend.id] = friend;
+                uniqueFriendIds.add(friend.id);
+            }
+        });
+
+        (reverseFriendships || []).forEach(f => {
+            const friend = f.friend;
+            if (friend && friend.id !== currentUser.id && !uniqueFriendIds.has(friend.id)) {
+                friends[friend.id] = friend;
+                uniqueFriendIds.add(friend.id);
             }
         });
 
         await updateConversationsList();
+
+        clearTimeout(loadFriendsTimeout);
+        loadFriendsTimeout = setTimeout(() => {
+            isLoadingFriends = false;
+        }, 500);
     };
 
-    const loadGroups = async () => {
-        const { data: groupMemberships } = await supabase
-            .from('group_members')
-            .select('*, group:groups(*)')
-            .eq('user_id', currentUser.id);
-
-        groups = {};
-        (groupMemberships || []).forEach(gm => {
-            if (gm.group) {
-                groups[gm.group.id] = gm.group;
-            }
-        });
-
-        await updateConversationsList();
-    };
-    
     const addFileButton = () => {
-    const fileBtn = document.createElement('button');
-    fileBtn.type = 'button';
-    fileBtn.className = 'attach-file-btn';
-    fileBtn.innerHTML = '<i class="fa-solid fa-paperclip"></i>';
-    fileBtn.title = 'Attach File';
-    fileBtn.style.cssText = `
-        background: none;
+        const fileBtn = document.createElement('button');
+        fileBtn.type = 'button';
+        fileBtn.className = 'attach-file-btn';
+        fileBtn.innerHTML = '<i class="fa-solid fa-paperclip"></i>';
+        fileBtn.title = 'Attach File';
+        fileBtn.style.cssText = `
+        background: var(--tertiary-bg);
         color: var(--secondary-text);
         font-size: 1.2rem;
-        width: 40px;
-        height: 40px;
         padding: 0;
         margin-right: 0.5rem;
     `;
-    fileBtn.onclick = () => ui.fileInput.click();
-    
-    const messageWrapper = document.querySelector('.message-input-wrapper');
-    if (messageWrapper && !messageWrapper.querySelector('.attach-file-btn')) {
-        messageWrapper.insertBefore(fileBtn, messageWrapper.firstChild);
-    }
-};
+        fileBtn.onclick = () => ui.fileInput.click();
+
+        const messageWrapper = document.querySelector('.message-input-wrapper');
+        if (messageWrapper && !messageWrapper.querySelector('.attach-file-btn')) {
+            messageWrapper.insertBefore(fileBtn, messageWrapper.firstChild);
+        }
+    };
 
     const loadFriendRequests = async () => {
         const { data: incoming } = await supabase
@@ -355,7 +517,92 @@ document.addEventListener('DOMContentLoaded', () => {
         blockedUsers = new Set((blocks || []).map(b => b.blocked_user_id));
     };
 
+    const subscribeToFriendRequests = () => {
+        if (!currentUser || !currentUser.id) return;
+
+        const channel = supabase
+            .channel('friend-requests-changes')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'friendships'
+            }, async (payload) => {
+                if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+                    if (payload.new.friend_id === currentUser.id && payload.new.status === 'pending') {
+                        await loadFriendRequests();
+                        showNotification('New friend request received!');
+                    } else if (payload.new.status === 'accepted') {
+                        await loadFriends();
+                        await updateConversationsList();
+                    }
+                } else if (payload.eventType === 'DELETE') {
+                    await loadFriends();
+                    await loadFriendRequests();
+                    await updateConversationsList();
+                }
+            })
+            .subscribe();
+
+        subscriptions.push(channel);
+    };
+
+    const subscribeToFriendships = () => {
+        if (!currentUser || !currentUser.id) return;
+
+        const channel = supabase
+            .channel('friendships-changes')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'friendships'
+            }, async () => {
+                await loadFriends();
+                await updateConversationsList();
+            })
+            .subscribe();
+
+        subscriptions.push(channel);
+    };
+
+    const subscribeToCallInvites = () => {
+        if (!currentUser || !currentUser.id) return;
+
+        const channel = supabase
+            .channel('call-invites-changes')
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'call_invites',
+                filter: `callee_id=eq.${currentUser.id}`
+            }, async (payload) => {
+                if (payload.new.status === 'pending') {
+                    const { data: caller } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', payload.new.caller_id)
+                        .single();
+
+                    if (caller) {
+                        ui.callerName.textContent = caller.username;
+                        ui.callerAvatar.textContent = caller.username[0].toUpperCase();
+                        if (caller.avatar_url) {
+                            ui.callerAvatar.innerHTML = `<img src="${caller.avatar_url}" alt="${caller.username}">`;
+                        }
+
+                        incomingCallData = { from: caller.id, callInviteId: payload.new.id };
+                        showModal(ui.incomingCallModal);
+                        ui.incomingCallAudio.play();
+                    }
+                }
+            })
+            .subscribe();
+
+        subscriptions.push(channel);
+    };
+
     const subscribeToPresence = () => {
+        if (!currentUser || !currentUser.id) return;
+
         const channel = supabase.channel('online-users');
 
         channel
@@ -384,181 +631,114 @@ document.addEventListener('DOMContentLoaded', () => {
         subscriptions.push(channel);
     };
 
-const subscribeToMessages = () => {
-    const channel = supabase
-        .channel('messages-changes')
-        .on('postgres_changes', {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'messages',
-            filter: `receiver_id=eq.${currentUser.id}`
-        }, async (payload) => {
-            await handleNewMessage(payload.new);
-        })
-        .on('postgres_changes', {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'messages'
-        }, (payload) => {
-            updateMessageInUI(payload.new);
-        })
-        .on('postgres_changes', {
-            event: 'DELETE',
-            schema: 'public',
-            table: 'messages'
-        }, (payload) => {
-            removeMessageFromUI(payload.old.id);
-        })
-        .subscribe();
+    ui.showSignup.onclick = (e) => {
+        e.preventDefault();
+        ui.loginForm.classList.add('hidden');
+        ui.signupForm.classList.remove('hidden');
+        ui.authStatus.textContent = '';
+    };
 
-    subscriptions.push(channel);
-};
+    ui.showLogin.onclick = (e) => {
+        e.preventDefault();
+        ui.signupForm.classList.add('hidden');
+        ui.loginForm.classList.remove('hidden');
+        ui.authStatus.textContent = '';
+    };
 
-    const subscribeToFriendRequests = () => {
+    const subscribeToMessages = () => {
+        if (!currentUser || !currentUser.id) {
+            console.error('Cannot subscribe to messages: currentUser not loaded');
+            return;
+        }
+
         const channel = supabase
-            .channel('friend-requests-changes')
+            .channel('messages-changes')
             .on('postgres_changes', {
-                event: '*',
+                event: 'INSERT',
                 schema: 'public',
-                table: 'friendships'
+                table: 'messages',
+                filter: `or(receiver_id=eq.${currentUser.id},sender_id=eq.${currentUser.id})`
             }, async (payload) => {
-                if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-                    if (payload.new.friend_id === currentUser.id && payload.new.status === 'pending') {
-                        await loadFriendRequests();
-                        showNotification('New friend request received!');
-                    } else if (payload.new.status === 'accepted') {
-                        await loadFriends();
-                        await updateConversationsList();
-                    }
-                } else if (payload.eventType === 'DELETE') {
-                    await loadFriends();
-                    await loadFriendRequests();
-                    await updateConversationsList();
-                }
+                await handleNewMessage(payload.new);
+            })
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'messages'
+            }, (payload) => {
+                updateMessageInUI(payload.new);
+            })
+            .on('postgres_changes', {
+                event: 'DELETE',
+                schema: 'public',
+                table: 'messages'
+            }, (payload) => {
+                removeMessageFromUI(payload.old.id);
             })
             .subscribe();
 
         subscriptions.push(channel);
     };
 
-    const subscribeToFriendships = () => {
-        const channel = supabase
-            .channel('friendships-changes')
-            .on('postgres_changes', {
-                event: '*',
-                schema: 'public',
-                table: 'friendships'
-            }, async () => {
-                await loadFriends();
-                await updateConversationsList();
-            })
-            .subscribe();
+    const checkPendingCallInvites = async () => {
+        const { data: pendingCalls } = await supabase
+            .from('call_invites')
+            .select('*, caller:profiles!call_invites_caller_id_fkey(*)')
+            .eq('callee_id', currentUser.id)
+            .eq('status', 'pending')
+            .order('created_at', { ascending: false });
 
-        subscriptions.push(channel);
+        if (pendingCalls && pendingCalls.length > 0) {
+            const latestCall = pendingCalls[0];
+            const caller = latestCall.caller;
+
+            ui.callerName.textContent = caller.username;
+            ui.callerAvatar.textContent = caller.username[0].toUpperCase();
+            if (caller.avatar_url) {
+                ui.callerAvatar.innerHTML = `<img src="${caller.avatar_url}" alt="${caller.username}">`;
+            }
+
+            incomingCallData = { from: caller.id, callInviteId: latestCall.id };
+            showModal(ui.incomingCallModal);
+            ui.incomingCallAudio.play();
+        }
     };
 
-    const subscribeToGroups = () => {
-        const channel = supabase
-            .channel('groups-changes')
-            .on('postgres_changes', {
-                event: '*',
-                schema: 'public',
-                table: 'groups'
-            }, async (payload) => {
-                if (payload.eventType === 'UPDATE' && groups[payload.new.id]) {
-                    groups[payload.new.id] = payload.new;
-                    await updateConversationsList();
-                    if (currentChatType === 'group' && currentChatFriend?.id === payload.new.id) {
-                        ui.chatFriendName.textContent = payload.new.name;
-                    }
-                }
-            })
-            .subscribe();
+    const handleNewMessage = async (message) => {
+        if (blockedUsers.has(message.sender_id)) return;
 
-        const memberChannel = supabase
-            .channel('group-members-changes')
-            .on('postgres_changes', {
-                event: '*',
-                schema: 'public',
-                table: 'group_members',
-                filter: `user_id=eq.${currentUser.id}`
-            }, async () => {
-                await loadGroups();
-                await updateConversationsList();
-            })
-            .subscribe();
+        if (document.querySelector(`[data-message-id="${message.id}"]`)) return;
 
-        subscriptions.push(channel, memberChannel);
-    };
-
-    const subscribeToGroupMessages = () => {
-        const channel = supabase
-            .channel('group-messages-changes')
-            .on('postgres_changes', {
-                event: '*',
-                schema: 'public',
-                table: 'group_messages'
-            }, async (payload) => {
-                if (payload.eventType === 'INSERT') {
-                    const { data: group } = await supabase
-                        .from('group_members')
-                        .select('group_id')
-                        .eq('group_id', payload.new.group_id)
-                        .eq('user_id', currentUser.id)
-                        .single();
-
-                    if (group) {
-                        await handleNewGroupMessage(payload.new);
-                    }
-                } else if (payload.eventType === 'UPDATE') {
-                    updateGroupMessageInUI(payload.new);
-                } else if (payload.eventType === 'DELETE') {
-                    removeMessageFromUI(payload.old.id);
-                }
-            })
-            .subscribe();
-
-        subscriptions.push(channel);
-    };
-
-const handleNewMessage = async (message) => {
-    if (blockedUsers.has(message.sender_id)) return;
-    
-    if (document.querySelector(`[data-message-id="${message.id}"]`)) return;
-
-    const { data: sender } = await supabase.from('profiles').select('*').eq('id', message.sender_id).single();
-    if (!sender) return;
-
-    await updateConversationsList();
-
-    if (currentChatType === 'friend' && currentChatFriend?.id === message.sender_id) {
-        displayMessage(message, sender);
-        if (userSettings.readReceipts) {
-            await supabase.from('messages').update({ read: true }).eq('id', message.id);
-        }
-        scrollToBottom();
-    } else {
-        if (userSettings.notifications) {
-            showNotification(`New message from ${sender.username}`);
-        }
-        if (userSettings.messageSound) {
-            playMessageSound();
-        }
-    }
-};
-
-    const handleNewGroupMessage = async (message) => {
         const { data: sender } = await supabase.from('profiles').select('*').eq('id', message.sender_id).single();
         if (!sender) return;
 
         await updateConversationsList();
 
-        if (currentChatType === 'group' && currentChatFriend?.id === message.group_id) {
-            displayGroupMessage(message, sender);
-        } else {
-            const group = groups[message.group_id];
-            if (group && userSettings.notifications) {
-                showNotification(`New message in ${group.name}`);
+        if (message.sender_id === currentUser.id) {
+            if (currentChatType === 'friend' && currentChatFriend?.id === message.receiver_id) {
+                displayMessage(message, currentUser);
+                scrollToBottom();
+            }
+            return;
+        }
+
+        const shouldNotify = !isTabVisible || (currentChatType !== 'friend' || currentChatFriend?.id !== message.sender_id);
+
+        if (currentChatType === 'friend' && currentChatFriend?.id === message.sender_id) {
+            displayMessage(message, sender);
+            if (userSettings.readReceipts) {
+                await supabase.from('messages').update({ read: true }).eq('id', message.id);
+            }
+            scrollToBottom();
+        }
+
+        if (shouldNotify) {
+            if (userSettings.notifications && 'Notification' in window && Notification.permission === 'granted') {
+                new Notification(`New message from ${sender.username}`, {
+                    body: message.content || 'Sent a file',
+                    icon: sender.avatar_url || '/icon.png',
+                    tag: message.id
+                });
             }
             if (userSettings.messageSound) {
                 playMessageSound();
@@ -582,8 +762,6 @@ const handleNewMessage = async (message) => {
         }
     };
 
-    const updateGroupMessageInUI = updateMessageInUI;
-
     const removeMessageFromUI = (messageId) => {
         const msgElement = document.querySelector(`[data-message-id="${messageId}"]`);
         if (msgElement) {
@@ -591,7 +769,18 @@ const handleNewMessage = async (message) => {
         }
     };
 
+    let updateConversationsTimeout = null;
+    let isUpdatingConversations = false;
+    let renderConversationsTimeout = null;
+    let isRenderingConversations = false;
+
     const updateConversationsList = async () => {
+        if (isUpdatingConversations) {
+            return;
+        }
+
+        isUpdatingConversations = true;
+
         conversations = [];
 
         for (const friendId in friends) {
@@ -613,33 +802,26 @@ const handleNewMessage = async (message) => {
             });
         }
 
-        for (const groupId in groups) {
-            const group = groups[groupId];
-            const { data: messages } = await supabase
-                .from('group_messages')
-                .select('*')
-                .eq('group_id', groupId)
-                .order('created_at', { ascending: false })
-                .limit(1);
-
-            const lastMessage = messages?.[0];
-            conversations.push({
-                type: 'group',
-                id: groupId,
-                data: group,
-                lastMessage: lastMessage,
-                timestamp: lastMessage?.created_at || group.created_at
-            });
-        }
-
         conversations.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-        renderConversationsList();
+        clearTimeout(renderConversationsTimeout);
+        renderConversationsTimeout = setTimeout(renderConversationsList, 200);
+
+        clearTimeout(updateConversationsTimeout);
+        updateConversationsTimeout = setTimeout(() => {
+            isUpdatingConversations = false;
+        }, 500);
     };
 
     const renderConversationsList = () => {
+        if (isRenderingConversations) {
+            return;
+        }
+
+        isRenderingConversations = true;
+
         let html = '';
-        
+
         if (friendRequests.length > 0) {
             html += `<div class="list-header">Friend Requests (${friendRequests.length})</div>`;
             html += `<div class="friend-item" onclick="window.showFriendRequestsModal()">
@@ -672,17 +854,6 @@ const handleNewMessage = async (message) => {
                             </div>
                         `;
                     }
-                } else if (conv.type === 'group') {
-                    const group = conv.data;
-                    html += `
-                        <div class="group-item" data-group-id="${group.id}" onclick="window.openChat('${group.id}', 'group')">
-                            <div class="avatar">${group.avatar_url ? `<img src="${group.avatar_url}" alt="${group.name}">` : group.name[0].toUpperCase()}</div>
-                            <div class="friend-info">
-                                <div class="friend-name">${group.name}</div>
-                                <div class="friend-status">${conv.lastMessage ? (conv.lastMessage.content?.substring(0, 30) || 'Sent a file') : 'No messages yet'}</div>
-                            </div>
-                        </div>
-                    `;
                 }
             });
         } else {
@@ -690,6 +861,11 @@ const handleNewMessage = async (message) => {
         }
 
         ui.friendsList.innerHTML = html;
+
+        clearTimeout(renderConversationsTimeout);
+        renderConversationsTimeout = setTimeout(() => {
+            isRenderingConversations = false;
+        }, 500);
     };
 
     window.showFriendRequestsModal = () => {
@@ -747,7 +923,11 @@ const handleNewMessage = async (message) => {
 
             ui.chatFriendName.textContent = currentChatFriend.username;
             ui.chatAvatar.textContent = currentChatFriend.username[0].toUpperCase();
-            
+
+            const isOnline = onlineUsers.has(currentChatFriend.id);
+            ui.chatStatusText.textContent = isOnline ? 'Online' : 'Offline';
+            ui.chatStatusText.classList.remove('hidden');
+
             if (currentChatFriend.avatar_url) {
                 ui.chatAvatar.innerHTML = `<img src="${currentChatFriend.avatar_url}" alt="${currentChatFriend.username}">`;
             }
@@ -755,35 +935,126 @@ const handleNewMessage = async (message) => {
             ui.chatFriendStatus.classList.toggle('online', onlineUsers.has(currentChatFriend.id));
 
             await loadMessages(currentChatFriend.id);
-        } else if (type === 'group') {
-            currentChatFriend = groups[id];
-            if (!currentChatFriend) return;
-
-            ui.chatFriendName.textContent = currentChatFriend.name;
-            ui.chatAvatar.textContent = currentChatFriend.name[0].toUpperCase();
-            
-            if (currentChatFriend.avatar_url) {
-                ui.chatAvatar.innerHTML = `<img src="${currentChatFriend.avatar_url}" alt="${currentChatFriend.name}">`;
-            }
-
-            ui.chatFriendStatus.style.display = 'none';
-
-            await loadGroupMessages(currentChatFriend.id);
+            subscribeToTypingIndicators(id);
         }
 
         ui.welcomeScreen.classList.add('hidden');
         ui.chatView.classList.remove('hidden');
+
+        const friendInfo = document.querySelector('#chat-header .friend-info');
+        if (friendInfo) {
+            friendInfo.onclick = () => {
+                if (currentChatType === 'friend') {
+                    ui.profileUsername.textContent = currentChatFriend.username;
+                    ui.profileUsernameValue.textContent = currentChatFriend.username;
+                    ui.profileAvatar.textContent = currentChatFriend.username[0].toUpperCase();
+
+                    if (currentChatFriend.avatar_url) {
+                        ui.profileAvatar.innerHTML = `<img src="${currentChatFriend.avatar_url}" alt="${currentChatFriend.username}">`;
+                    }
+
+                    const isOnline = onlineUsers.has(currentChatFriend.id);
+                    ui.profileStatusDot.classList.toggle('online', isOnline);
+                    ui.profileStatusText.textContent = isOnline ? 'Online' : 'Offline';
+
+                    const joinedDate = new Date(currentChatFriend.created_at).toLocaleDateString();
+                    ui.profileJoinedDate.textContent = joinedDate;
+
+                    showModal(ui.friendProfileModal);
+                }
+            };
+        }
+
+        initializeMessageSwipe();
 
         if (window.innerWidth <= 768) {
             ui.sidebar.classList.add('hidden');
             ui.chatContainer.classList.add('active');
         }
 
-        document.querySelectorAll('.friend-item, .group-item').forEach(item => item.classList.remove('active'));
-        const activeItem = type === 'friend' 
-            ? document.querySelector(`[data-friend-id="${id}"]`)
-            : document.querySelector(`[data-group-id="${id}"]`);
+        document.querySelectorAll('.friend-item').forEach(item => item.classList.remove('active'));
+        const activeItem = document.querySelector(`[data-friend-id="${id}"]`);
         if (activeItem) activeItem.classList.add('active');
+    };
+
+    const subscribeToTypingIndicators = (friendId) => {
+        subscriptions.forEach(sub => {
+            if (sub && sub.topic && sub.topic.includes('typing-')) {
+                sub.unsubscribe();
+            }
+        });
+
+        const typingChannel = supabase.channel(`typing-${currentUser.id}-${friendId}`);
+
+        typingChannel
+            .on('broadcast', { event: 'typing' }, (payload) => {
+                if (payload.payload.userId !== currentUser.id) {
+                    if (payload.payload.isTyping) {
+                        showTypingIndicator(friendId);
+                    } else {
+                        hideTypingIndicator(friendId);
+                    }
+                }
+            })
+            .subscribe();
+
+        subscriptions.push(typingChannel);
+    };
+
+    const showTypingIndicator = (friendId) => {
+        const friend = friends[friendId];
+        if (!friend || currentChatType !== 'friend' || currentChatFriend?.id !== friendId) return;
+
+        if (!ui.typingIndicator) {
+            const indicator = document.createElement('div');
+            indicator.id = 'typing-indicator';
+            indicator.className = 'typing-indicator';
+            indicator.innerHTML = `
+                <div class="typing-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <span class="typing-text">${friend.username} is typing...</span>
+            `;
+            indicator.style.cssText = `
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                padding: 0.5rem 1rem;
+                color: var(--secondary-text);
+                font-size: 0.85rem;
+                font-style: italic;
+            `;
+
+            const dots = indicator.querySelector('.typing-dots');
+            dots.style.cssText = `
+                display: flex;
+                gap: 0.25rem;
+            `;
+
+            dots.querySelectorAll('span').forEach((span, i) => {
+                span.style.cssText = `
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 50%;
+                    background: var(--secondary-text);
+                    animation: typing-bounce 1.4s infinite ease-in-out;
+                    animation-delay: ${i * 0.2}s;
+                `;
+            });
+
+            ui.messagesContainer.appendChild(indicator);
+            ui.typingIndicator = indicator;
+            scrollToBottom();
+        }
+    };
+
+    const hideTypingIndicator = (friendId) => {
+        if (ui.typingIndicator) {
+            ui.typingIndicator.remove();
+            ui.typingIndicator = null;
+        }
     };
 
     const loadMessages = async (friendId) => {
@@ -809,208 +1080,102 @@ const handleNewMessage = async (message) => {
         scrollToBottom();
     };
 
-    const loadGroupMessages = async (groupId) => {
-        const { data: messages } = await supabase
-            .from('group_messages')
-            .select('*')
-            .eq('group_id', groupId)
-            .order('created_at', { ascending: true });
+    const displayMessage = (message, sender) => {
+        if (document.querySelector(`[data-message-id="${message.id}"]`)) return;
 
-        ui.messagesContainer.innerHTML = '';
-        for (const message of messages || []) {
-            const { data: sender } = await supabase.from('profiles').select('*').eq('id', message.sender_id).single();
-            displayGroupMessage(message, sender);
-        }
-
-        scrollToBottom();
-    };
-
-const displayMessage = (message, sender) => {
-    if (document.querySelector(`[data-message-id="${message.id}"]`)) return;
-    
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${message.sender_id === currentUser.id ? 'sent' : 'received'}`;
-    messageDiv.dataset.messageId = message.id;
-
-    const isMobile = window.innerWidth <= 768;
-    const isSent = message.sender_id === currentUser.id;
-
-    let content = '';
-
-    if (message.reply_to_id) {
-        const replyText = message.reply_to_content || 'Original message';
-        content += `<div class="message-reply-context" style="background: rgba(88, 101, 242, 0.1); padding: 0.5rem; border-left: 3px solid var(--primary-accent); margin-bottom: 0.5rem; border-radius: 4px; font-size: 0.85rem;"><i class="fa-solid fa-reply"></i> ${escapeHtml(replyText.substring(0, 50))}${replyText.length > 50 ? '...' : ''}</div>`;
-    }
-
-    if (message.file_url) {
-        const fileType = message.file_type || 'file';
-        if (fileType.startsWith('image/')) {
-            content += `<img src="${message.file_url}" alt="Image" class="message-image" onclick="window.open('${message.file_url}', '_blank')" style="max-width: 300px; border-radius: var(--button-border-radius); cursor: pointer; display: block;">`;
-        } else if (fileType.startsWith('audio/')) {
-            content += `<audio controls src="${message.file_url}" class="message-audio" style="max-width: 100%;"></audio>`;
-        } else {
-            content += `<a href="${message.file_url}" target="_blank" class="message-file" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: var(--tertiary-bg); border-radius: var(--button-border-radius); text-decoration: none; color: var(--primary-text);"><i class="fa-solid fa-file"></i> ${message.file_name || 'File'}</a>`;
-        }
-    }
-
-    if (message.content) {
-        content += `<div class="message-content">${escapeHtml(message.content)}${message.edited ? '<span class="message-edited" style="font-size: 0.75rem; color: var(--secondary-text); margin-left: 0.5rem;">(edited)</span>' : ''}</div>`;
-    }
-
-    if (message.call_duration !== null && message.call_duration !== undefined) {
-        const caller = message.sender_id === currentUser.id ? 'You' : sender.username;
-        const duration = formatCallDuration(message.call_duration);
-        content = `<div class="message-call-info" style="display: flex; align-items: center; gap: 0.5rem;"><i class="fa-solid fa-phone"></i> ${caller} called â¢ ${duration}</div>`;
-    }
-
-    content += `<div class="message-reactions" data-message-id="${message.id}" style="display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.25rem;"></div>`;
-
-    const timestamp = new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    
-    if (isMobile) {
-        const timestampDiv = document.createElement('div');
-        timestampDiv.className = 'message-timestamp-reveal';
-        timestampDiv.textContent = timestamp;
-        timestampDiv.style.cssText = `
-            position: absolute;
-            top: 50%;
-            transform: translateY(-50%);
-            font-size: 0.75rem;
-            color: var(--secondary-text);
-            opacity: 0;
-            transition: opacity 0.2s ease;
-            pointer-events: none;
-            ${isSent ? 'right: 100%; padding-right: 0.5rem;' : 'left: 100%; padding-left: 0.5rem;'}
-        `;
-        
-        const contentWrapper = document.createElement('div');
-        contentWrapper.innerHTML = content;
-        contentWrapper.style.cssText = 'position: relative;';
-        
-        messageDiv.appendChild(timestampDiv);
-        messageDiv.appendChild(contentWrapper);
-        
-        setupMessageSwipe(contentWrapper, isSent);
-    } else {
-        const contentWrapper = document.createElement('div');
-        contentWrapper.innerHTML = content;
-        messageDiv.appendChild(contentWrapper);
-        
-        const timestampDiv = document.createElement('div');
-        timestampDiv.className = 'message-timestamp';
-        timestampDiv.textContent = timestamp;
-        timestampDiv.style.cssText = `
-            font-size: 0.7rem;
-            color: var(--secondary-text);
-            margin-top: 0.25rem;
-            text-align: ${isSent ? 'right' : 'left'};
-        `;
-        messageDiv.appendChild(timestampDiv);
-    }
-
-    if (message.sender_id === currentUser.id) {
-        messageDiv.addEventListener('contextmenu', (e) => showMessageContextMenu(e, message));
-        messageDiv.addEventListener('click', (e) => {
-            if (e.target.closest('.message-content') && !e.target.closest('.message-reaction')) {
-                showMessageContextMenu(e, message);
-            }
-        });
-    }
-
-    messageDiv.addEventListener('click', (e) => {
-        if (e.target.classList.contains('message-reaction')) {
-            toggleReaction(message.id, e.target.dataset.emoji);
-        }
-    });
-
-    ui.messagesContainer.appendChild(messageDiv);
-
-    if (message.reactions) {
-        renderReactions(message.id, message.reactions);
-    }
-};
-
-    const displayGroupMessage = (message, sender) => {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${message.sender_id === currentUser.id ? 'sent' : 'received'}`;
         messageDiv.dataset.messageId = message.id;
 
         const isMobile = window.innerWidth <= 768;
-        const swipeContainer = document.createElement('div');
-        swipeContainer.className = 'message-swipe-container';
+        const isSent = message.sender_id === currentUser.id;
 
         let content = '';
 
-        if (message.sender_id !== currentUser.id) {
-            const senderAvatar = document.createElement('div');
-            senderAvatar.className = 'message-sender-avatar avatar';
-            senderAvatar.textContent = sender.username[0].toUpperCase();
-            if (sender.avatar_url) {
-                senderAvatar.innerHTML = `<img src="${sender.avatar_url}" alt="${sender.username}">`;
-            }
-            messageDiv.insertBefore(senderAvatar, messageDiv.firstChild);
-            
-            content += `<div class="message-sender-name">${sender.username}</div>`;
-        }
-
         if (message.reply_to_id) {
             const replyText = message.reply_to_content || 'Original message';
-            content += `<div class="message-reply-context"><i class="fa-solid fa-reply"></i> ${replyText.substring(0, 50)}${replyText.length > 50 ? '...' : ''}</div>`;
+            content += `<div class="message-reply-context" style="background: rgba(88, 101, 242, 0.1); padding: 0.5rem; border-left: 3px solid var(--primary-accent); margin-bottom: 0.5rem; border-radius: 4px; font-size: 0.85rem;"><i class="fa-solid fa-reply"></i> ${escapeHtml(replyText.substring(0, 50))}${replyText.length > 50 ? '...' : ''}</div>`;
         }
 
         if (message.file_url) {
             const fileType = message.file_type || 'file';
             if (fileType.startsWith('image/')) {
-                content += `<img src="${message.file_url}" alt="Image" class="message-image" onclick="window.open('${message.file_url}', '_blank')">`;
+                content += `<img src="${message.file_url}" alt="Image" class="message-image" onclick="window.open('${message.file_url}', '_blank')" style="max-width: 300px; border-radius: var(--button-border-radius); cursor: pointer; display: block;">`;
             } else if (fileType.startsWith('audio/')) {
-                content += `<audio controls src="${message.file_url}" class="message-audio"></audio>`;
+                content += `<audio controls src="${message.file_url}" class="message-audio" style="max-width: 100%;"></audio>`;
             } else {
-                content += `<a href="${message.file_url}" target="_blank" class="message-file"><i class="fa-solid fa-file"></i> ${message.file_name || 'File'}</a>`;
+                content += `<a href="${message.file_url}" target="_blank" class="message-file" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: var(--tertiary-bg); border-radius: var(--button-border-radius); text-decoration: none; color: var(--primary-text);"><i class="fa-solid fa-file"></i> ${message.file_name || 'File'}</a>`;
             }
         }
 
         if (message.content) {
-            content += `<div class="message-content">${escapeHtml(message.content)}${message.edited ? '<span class="message-edited">(edited)</span>' : ''}</div>`;
+            content += `<div class="message-content">${escapeHtml(message.content)}${message.edited ? '<span class="message-edited" style="font-size: 0.75rem; color: var(--secondary-text); margin-left: 0.5rem;">(edited)</span>' : ''}</div>`;
         }
 
         if (message.call_duration !== null && message.call_duration !== undefined) {
             const caller = message.sender_id === currentUser.id ? 'You' : sender.username;
             const duration = formatCallDuration(message.call_duration);
-            content = `<div class="message-call-info"><i class="fa-solid fa-phone"></i> ${caller} called • ${duration}</div>`;
+            content = `<div class="message-call-info" style="display: flex; align-items: center; gap: 0.5rem;"><i class="fa-solid fa-phone"></i> ${caller} called at ${duration}</div>`;
         }
 
-        content += `<div class="message-reactions" data-message-id="${message.id}"></div>`;
+        content += `<div class="message-reactions" data-message-id="${message.id}" style="display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.25rem;"></div>`;
 
         const timestamp = new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        
+
         if (isMobile) {
-            swipeContainer.innerHTML = `
-                <div class="message-timestamp-reveal">${timestamp}</div>
-                ${content}
-            `;
-            messageDiv.appendChild(swipeContainer);
+            const timestampDiv = document.createElement('div');
+            timestampDiv.className = 'message-timestamp-reveal';
+            timestampDiv.textContent = timestamp;
+            timestampDiv.style.cssText = `
+            position: absolute;
+            bottom: 0.25rem;
+            font-size: 0.75rem;
+            color: var(--secondary-text);
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            pointer-events: none;
+            ${isSent ? 'right: 0.5rem;' : 'left: 0.5rem;'}
+        `;
+
+            const contentWrapper = document.createElement('div');
+            contentWrapper.innerHTML = content;
+            contentWrapper.style.cssText = 'position: relative;';
+
+            messageDiv.appendChild(contentWrapper);
+            messageDiv.appendChild(timestampDiv);
+
+            setupMessageSwipe(contentWrapper, isSent);
         } else {
-            swipeContainer.innerHTML = content;
-            messageDiv.appendChild(swipeContainer);
+            const contentWrapper = document.createElement('div');
+            contentWrapper.innerHTML = content;
+            messageDiv.appendChild(contentWrapper);
+
             const timestampDiv = document.createElement('div');
             timestampDiv.className = 'message-timestamp';
             timestampDiv.textContent = timestamp;
+            timestampDiv.style.cssText = `
+            font-size: 0.7rem;
+            color: var(--secondary-text);
+            margin-top: 0.25rem;
+            text-align: ${isSent ? 'right' : 'left'};
+        `;
             messageDiv.appendChild(timestampDiv);
         }
 
         if (message.sender_id === currentUser.id) {
-            messageDiv.addEventListener('contextmenu', (e) => showGroupMessageContextMenu(e, message));
+            messageDiv.addEventListener('contextmenu', (e) => showMessageContextMenu(e, message));
+            messageDiv.addEventListener('click', (e) => {
+                if (e.target.closest('.message-content') && !e.target.closest('.message-reaction')) {
+                    showMessageContextMenu(e, message);
+                }
+            });
         }
 
         messageDiv.addEventListener('click', (e) => {
             if (e.target.classList.contains('message-reaction')) {
-                toggleGroupReaction(message.id, e.target.dataset.emoji);
+                toggleReaction(message.id, e.target.dataset.emoji);
             }
         });
-
-        if (isMobile) {
-            setupMessageSwipe(swipeContainer, message.sender_id === currentUser.id);
-        }
 
         ui.messagesContainer.appendChild(messageDiv);
 
@@ -1019,54 +1184,54 @@ const displayMessage = (message, sender) => {
         }
     };
 
-const setupMessageSwipe = (element, isSent) => {
-    let startX = 0;
-    let currentX = 0;
-    let isDragging = false;
+    const setupMessageSwipe = (element, isSent) => {
+        let startX = 0;
+        let currentX = 0;
+        let isDragging = false;
 
-    element.addEventListener('touchstart', (e) => {
-        startX = e.touches[0].clientX;
-        isDragging = true;
-    });
+        element.addEventListener('touchstart', (e) => {
+            startX = e.touches[0].clientX;
+            isDragging = true;
+        });
 
-    element.addEventListener('touchmove', (e) => {
-        if (!isDragging) return;
-        currentX = e.touches[0].clientX;
-        const diff = currentX - startX;
-        
-        const maxSwipe = 80;
+        element.addEventListener('touchmove', (e) => {
+            if (!isDragging) return;
+            currentX = e.touches[0].clientX;
+            const diff = currentX - startX;
 
-        const swipeAmount = isSent ? Math.min(Math.max(diff, -maxSwipe), 0) : Math.max(Math.min(diff, maxSwipe), 0);
-        
-        element.style.transform = `translateX(${swipeAmount}px)`;
-        
-        const timestamp = element.parentElement.querySelector('.message-timestamp-reveal');
-        if (timestamp) {
-            timestamp.style.opacity = Math.abs(swipeAmount) / maxSwipe;
-        }
-    });
+            const maxSwipe = 80;
 
-    element.addEventListener('touchend', () => {
-        isDragging = false;
-        element.style.transform = 'translateX(0)';
-        
-        const timestamp = element.parentElement.querySelector('.message-timestamp-reveal');
-        if (timestamp) {
-            timestamp.style.opacity = 0;
-        }
-    });
-};
+            const swipeAmount = isSent ? Math.min(Math.max(diff, -maxSwipe), 0) : Math.max(Math.min(diff, maxSwipe), 0);
 
-const showMessageContextMenu = (e, message) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const existingMenu = document.querySelector('.context-menu');
-    if (existingMenu) existingMenu.remove();
-    
-    const menu = document.createElement('div');
-    menu.className = 'context-menu';
-    menu.style.cssText = `
+            element.style.transform = `translateX(${swipeAmount}px)`;
+
+            const timestamp = element.parentElement.querySelector('.message-timestamp-reveal');
+            if (timestamp) {
+                timestamp.style.opacity = Math.abs(swipeAmount) / maxSwipe;
+            }
+        });
+
+        element.addEventListener('touchend', () => {
+            isDragging = false;
+            element.style.transform = 'translateX(0)';
+
+            const timestamp = element.parentElement.querySelector('.message-timestamp-reveal');
+            if (timestamp) {
+                timestamp.style.opacity = 0;
+            }
+        });
+    };
+
+    const showMessageContextMenu = (e, message) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const existingMenu = document.querySelector('.context-menu');
+        if (existingMenu) existingMenu.remove();
+
+        const menu = document.createElement('div');
+        menu.className = 'context-menu';
+        menu.style.cssText = `
         position: fixed;
         left: ${e.clientX}px;
         top: ${e.clientY}px;
@@ -1078,25 +1243,25 @@ const showMessageContextMenu = (e, message) => {
         min-width: 150px;
         padding: 0.5rem 0;
     `;
-    
-    const items = [
-        { icon: 'fa-reply', text: 'Reply', action: () => window.replyToMessage(message.id, message.content || 'File') },
-        { icon: 'fa-face-smile', text: 'React', action: () => window.addReaction(message.id) }
-    ];
-    
-    if (message.content && message.sender_id === currentUser.id) {
-        items.push({ icon: 'fa-edit', text: 'Edit', action: () => window.editMessage(message.id, message.content) });
-    }
-    
-    if (message.sender_id === currentUser.id) {
-        items.push({ icon: 'fa-trash', text: 'Delete', action: () => window.deleteMessage(message.id), danger: true });
-    }
-    
-    items.forEach(item => {
-        const menuItem = document.createElement('div');
-        menuItem.className = 'context-menu-item';
-        menuItem.innerHTML = `<i class="fa-solid ${item.icon}"></i> ${item.text}`;
-        menuItem.style.cssText = `
+
+        const items = [
+            { icon: 'fa-reply', text: 'Reply', action: () => window.replyToMessage(message.id, message.content || 'File') },
+            { icon: 'fa-face-smile', text: 'React', action: () => window.addReaction(message.id) }
+        ];
+
+        if (message.content && message.sender_id === currentUser.id) {
+            items.push({ icon: 'fa-edit', text: 'Edit', action: () => window.editMessage(message.id, message.content) });
+        }
+
+        if (message.sender_id === currentUser.id) {
+            items.push({ icon: 'fa-trash', text: 'Delete', action: () => window.deleteMessage(message.id), danger: true });
+        }
+
+        items.forEach(item => {
+            const menuItem = document.createElement('div');
+            menuItem.className = 'context-menu-item';
+            menuItem.innerHTML = `<i class="fa-solid ${item.icon}"></i> ${item.text}`;
+            menuItem.style.cssText = `
             padding: 0.75rem 1rem;
             cursor: pointer;
             display: flex;
@@ -1105,87 +1270,56 @@ const showMessageContextMenu = (e, message) => {
             transition: var(--transition-fast);
             ${item.danger ? 'color: var(--error);' : ''}
         `;
-        menuItem.onmouseover = () => menuItem.style.background = 'var(--tertiary-bg)';
-        menuItem.onmouseout = () => menuItem.style.background = 'transparent';
-        menuItem.onclick = () => {
-            item.action();
-            menu.remove();
-        };
-        menu.appendChild(menuItem);
-    });
-
-    document.body.appendChild(menu);
-
-    const closeMenu = (e) => {
-        if (!menu.contains(e.target)) {
-            menu.remove();
-            document.removeEventListener('click', closeMenu);
-        }
-    };
-    setTimeout(() => document.addEventListener('click', closeMenu), 10);
-};
-
-if (ui.fileInput) {
-    ui.fileInput.addEventListener('change', async (e) => {
-        const files = Array.from(e.target.files);
-        if (files.length === 0) return;
-
-        pendingFiles = files;
-        
-        ui.filePreviewContent.innerHTML = '';
-        files.forEach(file => {
-            const filePreview = document.createElement('div');
-            filePreview.style.cssText = 'margin-bottom: 1rem;';
-            
-            if (file.type.startsWith('image/')) {
-                const img = document.createElement('img');
-                img.src = URL.createObjectURL(file);
-                img.style.cssText = 'max-width: 100%; max-height: 300px; border-radius: var(--button-border-radius);';
-                filePreview.appendChild(img);
-            } else {
-                filePreview.innerHTML = `<div style="padding: 1rem; background: var(--tertiary-bg); border-radius: var(--button-border-radius); display: flex; align-items: center; gap: 0.5rem;"><i class="fa-solid fa-file"></i> ${file.name}</div>`;
-            }
-            
-            ui.filePreviewContent.appendChild(filePreview);
+            menuItem.onmouseover = () => menuItem.style.background = 'var(--tertiary-bg)';
+            menuItem.onmouseout = () => menuItem.style.background = 'transparent';
+            menuItem.onclick = () => {
+                item.action();
+                menu.remove();
+            };
+            menu.appendChild(menuItem);
         });
-
-        showModal(ui.filePreviewModal);
-        e.target.value = '';
-    });
-}
-
-    const showGroupMessageContextMenu = (e, message) => {
-        e.preventDefault();
-        
-        const menu = document.createElement('div');
-        menu.className = 'context-menu';
-        menu.style.position = 'fixed';
-        menu.style.left = `${e.clientX}px`;
-        menu.style.top = `${e.clientY}px`;
-        menu.innerHTML = `
-            <div class="context-menu-item" onclick="window.replyToGroupMessage('${message.id}', '${escapeHtml(message.content || 'File')}')"><i class="fa-solid fa-reply"></i> Reply</div>
-            <div class="context-menu-item" onclick="window.editGroupMessage('${message.id}', '${escapeHtml(message.content)}')"><i class="fa-solid fa-edit"></i> Edit</div>
-            <div class="context-menu-item" onclick="window.addGroupReaction('${message.id}')"><i class="fa-solid fa-face-smile"></i> React</div>
-            <div class="context-menu-item" onclick="window.deleteGroupMessage('${message.id}')"><i class="fa-solid fa-trash"></i> Delete</div>
-        `;
 
         document.body.appendChild(menu);
 
-        const closeMenu = () => {
-            menu.remove();
-            document.removeEventListener('click', closeMenu);
+        const closeMenu = (e) => {
+            if (!menu.contains(e.target)) {
+                menu.remove();
+                document.removeEventListener('click', closeMenu);
+            }
         };
         setTimeout(() => document.addEventListener('click', closeMenu), 10);
     };
 
-    window.replyToMessage = (messageId, content) => {
-        replyingTo = { id: messageId, content };
-        ui.replyPreviewText.textContent = content.substring(0, 100);
-        ui.replyPreview.classList.remove('hidden');
-        ui.messageInput.focus();
-    };
+    if (ui.fileInput) {
+        ui.fileInput.addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files);
+            if (files.length === 0) return;
 
-    window.replyToGroupMessage = (messageId, content) => {
+            pendingFiles = files;
+
+            ui.filePreviewContent.innerHTML = '';
+            files.forEach(file => {
+                const filePreview = document.createElement('div');
+                filePreview.style.cssText = 'margin-bottom: 1rem;';
+
+                if (file.type.startsWith('image/')) {
+                    const img = document.createElement('img');
+                    img.src = URL.createObjectURL(file);
+                    img.style.cssText = 'max-width: 100%; max-height: 300px; border-radius: var(--button-border-radius);';
+                    filePreview.appendChild(img);
+                } else {
+                    filePreview.innerHTML = `<div style="padding: 1rem; background: var(--tertiary-bg); border-radius: var(--button-border-radius); display: flex; align-items: center; gap: 0.5rem;"><i class="fa-solid fa-file"></i> ${file.name}</div>`;
+                }
+
+                ui.filePreviewContent.appendChild(filePreview);
+            });
+
+            showModal(ui.filePreviewModal);
+            e.target.value = '';
+        });
+    }
+
+    window.replyToMessage = (messageId, content) => {
         replyingTo = { id: messageId, content };
         ui.replyPreviewText.textContent = content.substring(0, 100);
         ui.replyPreview.classList.remove('hidden');
@@ -1203,18 +1337,12 @@ if (ui.fileInput) {
         showModal(ui.editMessageModal);
     };
 
-    window.editGroupMessage = (messageId, content) => {
-        editingMessage = { id: messageId, type: 'group_message' };
-        ui.editMessageInput.value = content;
-        showModal(ui.editMessageModal);
-    };
-
     ui.editMessageForm.onsubmit = async (e) => {
         e.preventDefault();
         const newContent = ui.editMessageInput.value.trim();
         if (!newContent || !editingMessage) return;
 
-        const table = editingMessage.type === 'message' ? 'messages' : 'group_messages';
+        const table = 'messages';
         await supabase.from(table).update({
             content: newContent,
             edited: true
@@ -1225,23 +1353,42 @@ if (ui.fileInput) {
     };
 
     window.deleteMessage = async (messageId) => {
-        if (confirm('Delete this message?')) {
+        showConfirmationModal('Delete this message?', 'This action cannot be undone.', async () => {
             await supabase.from('messages').delete().eq('id', messageId);
-        }
+        });
     };
 
-    window.deleteGroupMessage = async (messageId) => {
-        if (confirm('Delete this message?')) {
-            await supabase.from('group_messages').delete().eq('id', messageId);
-        }
+    const showConfirmationModal = (title, message, onConfirm) => {
+        ui.confirmationTitle.textContent = title;
+        ui.confirmationMessage.textContent = message;
+        showModal(ui.confirmationModal);
+
+        ui.confirmBtn.onclick = async () => {
+            await onConfirm();
+            hideModal();
+        };
+
+        ui.cancelBtn.onclick = () => {
+            hideModal();
+        };
     };
 
-window.addReaction = async (messageId) => {
-    const emojis = ['ð', 'â¤ï¸', 'ð', 'ð®', 'ð¢', 'ð', 'ð', 'ð¥'];
-    
-    const picker = document.createElement('div');
-    picker.className = 'emoji-picker';
-    picker.style.cssText = `
+    const showInfoModal = (title, message) => {
+        ui.infoTitle.textContent = title;
+        ui.infoMessage.textContent = message;
+        showModal(ui.infoModal);
+
+        ui.infoOkBtn.onclick = () => {
+            hideModal();
+        };
+    };
+
+    window.addReaction = async (messageId) => {
+        const emojis = ['👍', '❤️', '😂', '😮', '😢', '😡', '🎉', '🔥'];
+
+        const picker = document.createElement('div');
+        picker.className = 'emoji-picker';
+        picker.style.cssText = `
         position: fixed;
         top: 50%;
         left: 50%;
@@ -1255,11 +1402,11 @@ window.addReaction = async (messageId) => {
         grid-template-columns: repeat(4, 1fr);
         gap: 0.5rem;
     `;
-    
-    emojis.forEach(emoji => {
-        const btn = document.createElement('button');
-        btn.textContent = emoji;
-        btn.style.cssText = `
+
+        emojis.forEach(emoji => {
+            const btn = document.createElement('button');
+            btn.textContent = emoji;
+            btn.style.cssText = `
             font-size: 2rem;
             padding: 0.5rem;
             background: none;
@@ -1268,17 +1415,17 @@ window.addReaction = async (messageId) => {
             border-radius: var(--button-border-radius);
             transition: var(--transition-fast);
         `;
-        btn.onmouseover = () => btn.style.background = 'var(--tertiary-bg)';
-        btn.onmouseout = () => btn.style.background = 'none';
-        btn.onclick = async () => {
-            await toggleReaction(messageId, emoji);
-            document.body.removeChild(backdrop);
-        };
-        picker.appendChild(btn);
-    });
-    
-    const backdrop = document.createElement('div');
-    backdrop.style.cssText = `
+            btn.onmouseover = () => btn.style.background = 'var(--tertiary-bg)';
+            btn.onmouseout = () => btn.style.background = 'none';
+            btn.onclick = async () => {
+                await toggleReaction(messageId, emoji);
+                document.body.removeChild(backdrop);
+            };
+            picker.appendChild(btn);
+        });
+
+        const backdrop = document.createElement('div');
+        backdrop.style.cssText = `
         position: fixed;
         top: 0;
         left: 0;
@@ -1290,81 +1437,15 @@ window.addReaction = async (messageId) => {
         align-items: center;
         justify-content: center;
     `;
-    backdrop.onclick = (e) => {
-        if (e.target === backdrop) {
-            document.body.removeChild(backdrop);
-        }
-    };
-    
-    backdrop.appendChild(picker);
-    document.body.appendChild(backdrop);
-};
-
-    window.addGroupReaction
-window.addGroupReaction = async (messageId) => {
-    const emojis = ['ð', 'â¤ï¸', 'ð', 'ð®', 'ð¢', 'ð', 'ð', 'ð¥'];
-    
-    const picker = document.createElement('div');
-    picker.className = 'emoji-picker';
-    picker.style.cssText = `
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: var(--secondary-bg);
-        padding: 1rem;
-        border-radius: var(--card-border-radius);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-        z-index: 10000;
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 0.5rem;
-    `;
-    
-    emojis.forEach(emoji => {
-        const btn = document.createElement('button');
-        btn.textContent = emoji;
-        btn.style.cssText = `
-            font-size: 2rem;
-            padding: 0.5rem;
-            background: none;
-            border: none;
-            cursor: pointer;
-            border-radius: var(--button-border-radius);
-            transition: var(--transition-fast);
-        `;
-        btn.onmouseover = () => btn.style.background = 'var(--tertiary-bg)';
-        btn.onmouseout = () => btn.style.background = 'none';
-        btn.onclick = async () => {
-            await toggleGroupReaction(messageId, emoji);
-            document.body.removeChild(backdrop);
+        backdrop.onclick = (e) => {
+            if (e.target === backdrop) {
+                document.body.removeChild(backdrop);
+            }
         };
-        picker.appendChild(btn);
-    });
-    
-    const backdrop = document.createElement('div');
-    backdrop.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.5);
-        z-index: 9999;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    `;
-    backdrop.onclick = (e) => {
-        if (e.target === backdrop) {
-            document.body.removeChild(backdrop);
-        }
-    };
-    
-    backdrop.appendChild(picker);
-    document.body.appendChild(backdrop);
-};
 
+        backdrop.appendChild(picker);
+        document.body.appendChild(backdrop);
+    };
 
     const toggleReaction = async (messageId, emoji) => {
         const { data: message } = await supabase.from('messages').select('reactions').eq('id', messageId).single();
@@ -1385,28 +1466,6 @@ window.addGroupReaction = async (messageId) => {
         }
 
         await supabase.from('messages').update({ reactions }).eq('id', messageId);
-        renderReactions(messageId, reactions);
-    };
-
-    const toggleGroupReaction = async (messageId, emoji) => {
-        const { data: message } = await supabase.from('group_messages').select('reactions').eq('id', messageId).single();
-        let reactions = message?.reactions || {};
-
-        if (!reactions[emoji]) {
-            reactions[emoji] = [];
-        }
-
-        const userIndex = reactions[emoji].indexOf(currentUser.id);
-        if (userIndex > -1) {
-            reactions[emoji].splice(userIndex, 1);
-            if (reactions[emoji].length === 0) {
-                delete reactions[emoji];
-            }
-        } else {
-            reactions[emoji].push(currentUser.id);
-        }
-
-        await supabase.from('group_messages').update({ reactions }).eq('id', messageId);
         renderReactions(messageId, reactions);
     };
 
@@ -1463,7 +1522,7 @@ window.addGroupReaction = async (messageId) => {
 
     const playMessageSound = () => {
         const audio = new Audio('/audios/message.mp3');
-        audio.play().catch(() => {});
+        audio.play().catch(() => { });
     };
 
     ui.messageForm.onsubmit = async (e) => {
@@ -1485,8 +1544,8 @@ window.addGroupReaction = async (messageId) => {
         if (pendingFiles.length > 0) {
             const file = pendingFiles[0];
             const fileExt = file.name.split('.').pop();
-            const fileName = `${Date.now()}.${fileExt}`;
-            const filePath = `${currentUser.id}/${fileName}`;
+            const fileName = `${currentUser.id}-avatar.${fileExt}`;
+            const filePath = `avatars/${fileName}`;
 
             const { data: uploadData } = await supabase.storage
                 .from('files')
@@ -1501,16 +1560,32 @@ window.addGroupReaction = async (messageId) => {
                 messageData.file_type = file.type;
                 messageData.file_name = file.name;
             }
-            
+
             pendingFiles = [];
         }
 
+        const tempId = `temp-${Date.now()}`;
+        messageData.id = tempId;
+
         if (currentChatType === 'friend') {
             messageData.receiver_id = currentChatFriend.id;
-            await supabase.from('messages').insert([messageData]);
-        } else if (currentChatType === 'group') {
-            messageData.group_id = currentChatFriend.id;
-            await supabase.from('group_messages').insert([messageData]);
+
+            displayMessage(messageData, currentUser);
+            scrollToBottom();
+
+            const { data: insertedMessage } = await supabase.from('messages').insert([messageData]).select().single();
+
+            if (insertedMessage) {
+                const tempElement = document.querySelector(`[data-message-id="${tempId}"]`);
+                if (tempElement) {
+                    tempElement.dataset.messageId = insertedMessage.id;
+                }
+            }
+        }
+
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            return;
         }
 
         ui.messageInput.value = '';
@@ -1522,10 +1597,29 @@ window.addGroupReaction = async (messageId) => {
 
     ui.messageInput.addEventListener('input', () => {
         adjustTextareaHeight();
-        
+
         if (typingTimeout) clearTimeout(typingTimeout);
-        
+
+        if (currentChatType === 'friend' && currentChatFriend) {
+            const typingChannel = supabase.channel(`typing-${currentUser.id}-${currentChatFriend.id}`);
+
+            typingChannel.send({
+                type: 'broadcast',
+                event: 'typing',
+                payload: { isTyping: true, userId: currentUser.id }
+            });
+        }
+
         typingTimeout = setTimeout(() => {
+            if (currentChatType === 'friend' && currentChatFriend) {
+                const typingChannel = supabase.channel(`typing-${currentUser.id}-${currentChatFriend.id}`);
+
+                typingChannel.send({
+                    type: 'broadcast',
+                    event: 'typing',
+                    payload: { isTyping: false, userId: currentUser.id }
+                });
+            }
         }, 1000);
     });
 
@@ -1534,12 +1628,12 @@ window.addGroupReaction = async (messageId) => {
         if (files.length === 0) return;
 
         pendingFiles = files;
-        
+
         ui.filePreviewContent.innerHTML = '';
         files.forEach(file => {
             const filePreview = document.createElement('div');
             filePreview.className = 'file-preview-item';
-            
+
             if (file.type.startsWith('image/')) {
                 const img = document.createElement('img');
                 img.src = URL.createObjectURL(file);
@@ -1549,7 +1643,7 @@ window.addGroupReaction = async (messageId) => {
             } else {
                 filePreview.innerHTML = `<i class="fa-solid fa-file"></i> ${file.name}`;
             }
-            
+
             ui.filePreviewContent.appendChild(filePreview);
         });
 
@@ -1559,11 +1653,11 @@ window.addGroupReaction = async (messageId) => {
     ui.fileSendForm.onsubmit = async (e) => {
         e.preventDefault();
         const caption = ui.fileCaptionInput.value.trim();
-        
+
         ui.messageInput.value = caption;
         hideModal();
         ui.fileCaptionInput.value = '';
-        
+
         ui.messageForm.dispatchEvent(new Event('submit'));
     };
 
@@ -1579,12 +1673,12 @@ window.addGroupReaction = async (messageId) => {
             .single();
 
         if (!targetUser) {
-            alert('User not found');
+            showInfoModal('User not found', 'The username you entered does not exist.');
             return;
         }
 
         if (targetUser.id === currentUser.id) {
-            alert('You cannot add yourself as a friend');
+            showInfoModal('Cannot add yourself', 'You cannot add yourself as a friend.');
             return;
         }
 
@@ -1595,7 +1689,7 @@ window.addGroupReaction = async (messageId) => {
             .single();
 
         if (existing) {
-            alert('Friend request already exists or you are already friends');
+            showInfoModal('Request exists', 'Friend request already exists or you are already friends.');
             return;
         }
 
@@ -1607,78 +1701,37 @@ window.addGroupReaction = async (messageId) => {
 
         ui.friendUsernameInput.value = '';
         hideModal();
-        alert('Friend request sent!');
-    };
-
-    ui.createGroupForm.onsubmit = async (e) => {
-        e.preventDefault();
-        const groupName = ui.groupNameInput.value.trim();
-        if (!groupName || selectedGroupMembers.size === 0) {
-            alert('Please enter a group name and select at least one member');
-            return;
-        }
-
-        const { data: group } = await supabase.from('groups').insert([{
-            name: groupName,
-            owner_id: currentUser.id,
-            created_by: currentUser.id
-        }]).select().single();
-
-        if (!group) return;
-
-        const members = [
-            { group_id: group.id, user_id: currentUser.id, role: 'owner' },
-            ...Array.from(selectedGroupMembers).map(memberId => ({
-                group_id: group.id,
-                user_id: memberId,
-                role: 'member'
-            }))
-        ];
-
-        await supabase.from('group_members').insert(members);
-
-        ui.groupNameInput.value = '';
-        selectedGroupMembers.clear();
-        hideModal();
-        await loadGroups();
-        await updateConversationsList();
-    };
-
-    const renderGroupMemberSelection = () => {
-    let html = '<div class="list-header" style="margin-bottom: 1rem;">Select Members</div>';
-    for (const friendId in friends) {
-        const friend = friends[friendId];
-        const isSelected = selectedGroupMembers.has(friendId);
-        html += `
-            <div class="group-member-item ${isSelected ? 'selected' : ''}" onclick="window.toggleGroupMember('${friendId}')" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border-radius: var(--button-border-radius); cursor: pointer; margin-bottom: 0.5rem; background: var(--tertiary-bg);">
-                <div class="group-member-checkbox" style="width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--border-color); display: flex; align-items: center; justify-content: center; flex-shrink: 0; ${isSelected ? 'background-color: var(--primary-accent); border-color: var(--primary-accent);' : ''}">
-                    <i class="fa-solid fa-check" style="color: white; font-size: 0.7rem; ${isSelected ? 'opacity: 1;' : 'opacity: 0;'}"></i>
-                </div>
-                <div class="avatar" style="width: 36px; height: 36px; flex-shrink: 0;">${friend.avatar_url ? `<img src="${friend.avatar_url}" alt="${friend.username}">` : friend.username[0].toUpperCase()}</div>
-                <div class="group-member-name" style="flex: 1; font-weight: 500;">${friend.username}</div>
-            </div>
-        `;
-    }
-    ui.groupMembersList.innerHTML = html;
-};
-
-    window.toggleGroupMember = (friendId) => {
-        if (selectedGroupMembers.has(friendId)) {
-            selectedGroupMembers.delete(friendId);
-        } else {
-            selectedGroupMembers.add(friendId);
-        }
-        renderGroupMemberSelection();
+        showInfoModal('Request sent', 'Friend request sent successfully!');
     };
 
     const showModal = (modal) => {
         ui.modalContainer.classList.remove('hidden');
-        document.querySelectorAll('#modal-content > div').forEach(m => m.classList.add('hidden'));
-        modal.classList.remove('hidden');
+
+        const modalContent = document.getElementById('modal-content');
+        const allModals = modalContent.querySelectorAll('#modal-content > div:not(.close-btn)');
+        allModals.forEach(m => m.classList.add('hidden'));
+
+        if (typeof modal === 'string') {
+            const dynamicModals = modalContent.querySelectorAll('.dynamic-modal');
+            dynamicModals.forEach(dm => dm.remove());
+
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = modal;
+            const newModal = tempDiv.firstElementChild;
+            if (newModal) {
+                modalContent.appendChild(newModal);
+            }
+        } else if (modal && modal.classList) {
+            modal.classList.remove('hidden');
+        }
     };
 
     const hideModal = () => {
         ui.modalContainer.classList.add('hidden');
+
+        const modalContent = document.getElementById('modal-content');
+        const dynamicModals = modalContent.querySelectorAll('.dynamic-modal');
+        dynamicModals.forEach(dm => dm.remove());
     };
 
     ui.closeModalBtn.onclick = hideModal;
@@ -1686,14 +1739,17 @@ window.addGroupReaction = async (messageId) => {
         if (e.target === ui.modalContainer) hideModal();
     };
 
+    document.addEventListener('click', (e) => {
+        if (ui.modalContainer && !ui.modalContainer.classList.contains('hidden')) {
+            const modalContent = document.getElementById('modal-content');
+            if (modalContent && !modalContent.contains(e.target) && e.target === ui.modalContainer) {
+                hideModal();
+            }
+        }
+    });
+
     ui.addFriendBtn.onclick = () => {
         showModal(ui.addFriendModal);
-    };
-
-    ui.createGroupBtn.onclick = () => {
-        selectedGroupMembers.clear();
-        renderGroupMemberSelection();
-        showModal(ui.createGroupModal);
     };
 
     ui.backToFriendsBtn.onclick = () => {
@@ -1701,16 +1757,12 @@ window.addGroupReaction = async (messageId) => {
         ui.chatContainer.classList.remove('active');
     };
 
-    ui.chatOptionsBtn.onclick = () => {
-        showModal(ui.chatOptionsModal);
-    };
-
     ui.viewProfileBtn.onclick = async () => {
         if (currentChatType === 'friend') {
             ui.profileUsername.textContent = currentChatFriend.username;
             ui.profileUsernameValue.textContent = currentChatFriend.username;
             ui.profileAvatar.textContent = currentChatFriend.username[0].toUpperCase();
-            
+
             if (currentChatFriend.avatar_url) {
                 ui.profileAvatar.innerHTML = `<img src="${currentChatFriend.avatar_url}" alt="${currentChatFriend.username}">`;
             }
@@ -1729,33 +1781,38 @@ window.addGroupReaction = async (messageId) => {
 
     ui.blockUserBtn.onclick = async () => {
         if (currentChatType === 'friend') {
-            if (confirm(`Block ${currentChatFriend.username}?`)) {
+            showConfirmationModal(`Block ${currentChatFriend.username}?`, 'This user will be blocked and you will not receive messages from them.', async () => {
                 await supabase.from('blocked_users').insert([{
                     user_id: currentUser.id,
                     blocked_user_id: currentChatFriend.id
                 }]);
-                
+
                 await loadBlockedUsers();
                 hideModal();
                 ui.chatView.classList.add('hidden');
                 ui.welcomeScreen.classList.remove('hidden');
                 await updateConversationsList();
-            }
+            });
         }
     };
 
     ui.unfriendBtn.onclick = async () => {
         if (currentChatType === 'friend') {
-            if (confirm(`Remove ${currentChatFriend.username} from friends?`)) {
+            showConfirmationModal(`Remove ${currentChatFriend.username}?`, 'This user will be removed from your friends list.', async () => {
                 await supabase.from('friendships').delete()
-                    .or(`and(user_id.eq.${currentUser.id},friend_id.eq.${currentChatFriend.id}),and(user_id.eq.${currentChatFriend.id},friend_id.eq.${currentUser.id})`);
-                
+                    .or(`and(user_id.eq.${currentUser.id}, friend_id.eq.${currentChatFriend.id}), and(user_id.eq.${currentChatFriend.id}, friend_id.eq.${currentUser.id})`);
+
                 await loadFriends();
                 hideModal();
                 ui.chatView.classList.add('hidden');
                 ui.welcomeScreen.classList.remove('hidden');
+
+                if (window.innerWidth <= 768) {
+                    ui.sidebar.classList.remove('hidden');
+                }
+
                 await updateConversationsList();
-            }
+            });
         }
     };
 
@@ -1764,10 +1821,10 @@ window.addGroupReaction = async (messageId) => {
     };
 
     ui.logoutBtn.onclick = async () => {
-        if (confirm('Are you sure you want to logout?')) {
+        showConfirmationModal('Logout', 'Are you sure you want to logout?', async () => {
             await supabase.auth.signOut();
             location.reload();
-        }
+        });
     };
 
     ui.loginForm.onsubmit = async (e) => {
@@ -1775,26 +1832,44 @@ window.addGroupReaction = async (messageId) => {
         const username = document.getElementById('login-username').value.trim();
         const password = document.getElementById('login-password').value;
 
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('email')
-            .eq('username', username)
-            .single();
-
-        if (!profile) {
-            setAuthStatus('Username not found');
+        if (!username || !password) {
+            showInfoModal('Invalid credentials', 'Please enter both username and password.');
             return;
         }
 
-        const { error } = await supabase.auth.signInWithPassword({
-            email: profile.email,
-            password: password
-        });
+        try {
+            const { data: profile, error: profileError } = await supabase
+                .from('profiles')
+                .select('email')
+                .eq('username', username)
+                .maybeSingle();
 
-        if (error) {
-            setAuthStatus(error.message);
-        } else {
+            if (profileError && profileError.code !== 'PGRST116') {
+                console.error('Profile lookup error:', profileError);
+                showInfoModal('Error', 'Could not find user. Please try again.');
+                return;
+            }
+
+            if (!profile) {
+                showInfoModal('Username not found', 'The username you entered does not exist.');
+                return;
+            }
+
+            const { error: loginError } = await supabase.auth.signInWithPassword({
+                email: profile.email,
+                password: password
+            });
+
+            if (loginError) {
+                console.error('Login error:', loginError);
+                showInfoModal('Invalid credentials', 'Incorrect username or password.');
+                return;
+            }
+
             location.reload();
+        } catch (error) {
+            console.error('Unexpected error:', error);
+            showInfoModal('Error', 'An unexpected error occurred. Please try again.');
         }
     };
 
@@ -1803,58 +1878,70 @@ window.addGroupReaction = async (messageId) => {
         const username = document.getElementById('signup-username').value.trim();
         const password = document.getElementById('signup-password').value;
 
-        const { data: existing } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('username', username)
-            .single();
-
-        if (existing) {
-            setAuthStatus('Username already taken');
+        if (!username || username.length < 3) {
+            showInfoModal('Invalid username', 'Username must be at least 3 characters long.');
             return;
         }
 
-        const email = `${username}@p2p.local`;
-
-        const { data: authData, error } = await supabase.auth.signUp({
-            email: email,
-            password: password
-        });
-
-        if (error) {
-            setAuthStatus(error.message);
+        if (!password || password.length < 6) {
+            showInfoModal('Invalid password', 'Password must be at least 6 characters long.');
             return;
         }
 
-        if (authData.user) {
-            await supabase.from('profiles').insert([{
-                id: authData.user.id,
-                username: username,
-                email: email
-            }]);
+        try {
+            const { data: existing, error: checkError } = await supabase
+                .from('profiles')
+                .select('id')
+                .eq('username', username)
+                .maybeSingle();
 
-            location.reload();
+            if (checkError && checkError.code !== 'PGRST116') {
+                console.error('Check error:', checkError);
+                showInfoModal('Error', 'Could not verify username. Please try again.');
+                return;
+            }
+
+            if (existing) {
+                showInfoModal('Username taken', 'This username is already taken. Please choose another.');
+                return;
+            }
+
+            const email = `${username.toLowerCase().replace(/[^a-z0-9]/g, '')}@p2p.local`;
+
+            const { data: authData, error: signupError } = await supabase.auth.signUp({
+                email: email,
+                password: password,
+                options: {
+                    data: {
+                        username: username
+                    }
+                }
+            });
+
+            if (signupError) {
+                console.error('Signup error:', signupError);
+                showInfoModal('Signup failed', signupError.message);
+                return;
+            }
+
+            if (authData.user) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                const { error: updateError } = await supabase
+                    .from('profiles')
+                    .update({ username: username })
+                    .eq('id', authData.user.id);
+
+                if (updateError) {
+                    console.error('Profile update error:', updateError);
+                }
+
+                location.reload();
+            }
+        } catch (error) {
+            console.error('Unexpected error:', error);
+            showInfoModal('Error', 'An unexpected error occurred. Please try again.');
         }
-    };
-
-    ui.showSignup.onclick = (e) => {
-        e.preventDefault();
-        ui.loginForm.classList.add('hidden');
-        ui.signupForm.classList.remove('hidden');
-        ui.authStatus.textContent = '';
-    };
-
-    ui.showLogin.onclick = (e) => {
-        e.preventDefault();
-        ui.signupForm.classList.add('hidden');
-        ui.loginForm.classList.remove('hidden');
-        ui.authStatus.textContent = '';
-    };
-
-    ui.themeToggle.onchange = () => {
-        userSettings.theme = ui.themeToggle.checked ? 'dark' : 'light';
-        saveSettings();
-        applySettings();
     };
 
     ui.fontSizeSelect.onchange = () => {
@@ -1897,27 +1984,37 @@ window.addGroupReaction = async (messageId) => {
         const file = e.target.files[0];
         if (!file) return;
 
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${currentUser.id}-avatar.${fileExt}`;
-        const filePath = `avatars/${fileName}`;
+        if (!file.type.startsWith('image/')) {
+            showInfoModal('Invalid file', 'Please upload an image file.');
+            e.target.value = '';
+            return;
+        }
 
-        const { data: uploadData } = await supabase.storage
-            .from('files')
-            .upload(filePath, file, { upsert: true });
+        const maxSize = 5 * 1024 * 1024;
+        if (file.size > maxSize) {
+            showInfoModal('File too large', 'Please upload an image smaller than 5MB.');
+            e.target.value = '';
+            return;
+        }
 
-        if (uploadData) {
-            const { data: { publicUrl } } = supabase.storage
-                .from('files')
-                .getPublicUrl(filePath);
+        try {
+            const base64 = await fileToBase64(file);
 
             await supabase.from('profiles').update({
-                avatar_url: publicUrl
+                avatar_url: base64
             }).eq('id', currentUser.id);
 
-            currentUser.avatar_url = publicUrl;
-            ui.userAvatar.innerHTML = `<img src="${publicUrl}" alt="${currentUser.username}">`;
-            ui.settingsAvatar.innerHTML = `<img src="${publicUrl}" alt="${currentUser.username}">`;
+            currentUser.avatar_url = base64;
+            ui.userAvatar.innerHTML = `<img src="${base64}" alt="${currentUser.username}">`;
+            ui.settingsAvatar.innerHTML = `<img src="${base64}" alt="${currentUser.username}">`;
+
+            showInfoModal('Success', 'Profile picture updated successfully!');
+        } catch (error) {
+            console.error('Upload error:', error);
+            showInfoModal('Upload failed', 'Could not upload image. Please try again.');
         }
+
+        e.target.value = '';
     };
 
     ui.changeUsernameBtn.onclick = () => {
@@ -1928,49 +2025,53 @@ window.addGroupReaction = async (messageId) => {
     ui.changeUsernameForm.onsubmit = async (e) => {
         e.preventDefault();
         const newUsername = ui.newUsernameInput.value.trim();
-        if (!newUsername) return;
 
-        const { data: existing } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('username', newUsername)
-            .single();
-
-        if (existing) {
-            alert('Username already taken');
+        if (!newUsername || newUsername.length < 3) {
+            showInfoModal('Invalid username', 'Username must be at least 3 characters long.');
             return;
         }
 
-        await supabase.from('profiles').update({
-            username: newUsername
-        }).eq('id', currentUser.id);
+        try {
+            const { data: existing, error: checkError } = await supabase
+                .from('profiles')
+                .select('id')
+                .eq('username', newUsername)
+                .maybeSingle();
 
-        currentUser.username = newUsername;
-        ui.usernameDisplay.textContent = newUsername;
-        ui.settingsUsername.textContent = newUsername;
-        ui.userAvatar.textContent = newUsername[0].toUpperCase();
-        ui.settingsAvatar.textContent = newUsername[0].toUpperCase();
-
-        if (currentUser.avatar_url) {
-            ui.userAvatar.innerHTML = `<img src="${currentUser.avatar_url}" alt="${newUsername}">`;
-            ui.settingsAvatar.innerHTML = `<img src="${currentUser.avatar_url}" alt="${newUsername}">`;
-        }
-
-        ui.newUsernameInput.value = '';
-        hideModal();
-    };
-
-    ui.searchFriendsInput.addEventListener('input', (e) => {
-        const query = e.target.value.toLowerCase();
-        document.querySelectorAll('.friend-item, .group-item').forEach(item => {
-            const name = item.querySelector('.friend-name')?.textContent.toLowerCase();
-            if (name?.includes(query) || !query) {
-                item.style.display = '';
-            } else {
-                item.style.display = 'none';
+            if (checkError && checkError.code !== 'PGRST116') {
+                console.error('Check error:', checkError);
+                showInfoModal('Error', 'Could not verify username. Please try again.');
+                return;
             }
-        });
-    });
+
+            if (existing) {
+                showInfoModal('Username taken', 'This username is already taken. Please choose another.');
+                return;
+            }
+
+            await supabase.from('profiles').update({
+                username: newUsername
+            }).eq('id', currentUser.id);
+
+            currentUser.username = newUsername;
+            ui.usernameDisplay.textContent = newUsername;
+            ui.settingsUsername.textContent = newUsername;
+            ui.userAvatar.textContent = newUsername[0].toUpperCase();
+            ui.settingsAvatar.textContent = newUsername[0].toUpperCase();
+
+            if (currentUser.avatar_url) {
+                ui.userAvatar.innerHTML = `<img src="${currentUser.avatar_url}" alt="${newUsername}">`;
+                ui.settingsAvatar.innerHTML = `<img src="${currentUser.avatar_url}" alt="${newUsername}">`;
+            }
+
+            ui.newUsernameInput.value = '';
+            hideModal();
+            showInfoModal('Success', 'Username updated successfully!');
+        } catch (error) {
+            console.error('Update error:', error);
+            showInfoModal('Error', 'Could not update username. Please try again.');
+        }
+    };
 
     const handleIncomingCall = (call) => {
         mediaConnection = call;
@@ -1999,42 +2100,153 @@ window.addGroupReaction = async (messageId) => {
         ui.incomingCallAudio.currentTime = 0;
         hideModal();
 
+        if (incomingCallData?.callInviteId) {
+            await supabase.from('call_invites').update({ status: 'accepted' }).eq('id', incomingCallData.callInviteId);
+        }
+
         const startTime = Date.now();
 
         try {
             localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            mediaConnection.answer(localStream);
 
-            mediaConnection.on('stream', (remoteStream) => {
-                showCallUI();
-                addVideoStream('local', localStream, currentUser);
-                addVideoStream('remote', remoteStream, friends[incomingCallData.from]);
-            });
+            if (mediaConnection) {
+                mediaConnection.answer(localStream);
 
-            mediaConnection.on('close', async () => {
-                const duration = Math.floor((Date.now() - startTime) / 1000);
-                await saveCallRecord(incomingCallData.from, duration);
-                endCall();
-            });
+                mediaConnection.on('stream', (remoteStream) => {
+                    showCallUI();
+                    addVideoStream('local', localStream, currentUser);
+                    addVideoStream('remote', remoteStream, friends[incomingCallData.from]);
+                });
+
+                mediaConnection.on('close', async () => {
+                    const duration = Math.floor((Date.now() - startTime) / 1000);
+                    await saveCallRecord(incomingCallData.from, duration);
+                    if (incomingCallData?.callInviteId) {
+                        await supabase.from('call_invites').update({ status: 'completed' }).eq('id', incomingCallData.callInviteId);
+                    }
+                    endCall();
+                });
+            } else {
+                const { data: friendProfile } = await supabase
+                    .from('profiles')
+                    .select('peer_id')
+                    .eq('id', incomingCallData.from)
+                    .single();
+
+                if (friendProfile?.peer_id) {
+                    const call = peer.call(friendProfile.peer_id, localStream, {
+                        metadata: { from: currentUser.id, callInviteId: incomingCallData.callInviteId }
+                    });
+
+                    mediaConnection = call;
+
+                    call.on('stream', (remoteStream) => {
+                        showCallUI();
+                        addVideoStream('local', localStream, currentUser);
+                        addVideoStream('remote', remoteStream, friends[incomingCallData.from]);
+                    });
+
+                    call.on('close', async () => {
+                        const duration = Math.floor((Date.now() - startTime) / 1000);
+                        await saveCallRecord(incomingCallData.from, duration);
+                        if (incomingCallData?.callInviteId) {
+                            await supabase.from('call_invites').update({ status: 'completed' }).eq('id', incomingCallData.callInviteId);
+                        }
+                        endCall();
+                    });
+                }
+            }
 
         } catch (error) {
-            console.error('Error accessing media devices:', error);
-            alert('Could not access camera/microphone');
+            showInfoModal('Media access denied', 'Could not access camera/microphone. Please check your permissions.');
         }
     };
 
-    ui.declineCallBtn.onclick = () => {
+    ui.declineCallBtn.onclick = async () => {
         ui.incomingCallAudio.pause();
         ui.incomingCallAudio.currentTime = 0;
         hideModal();
+
+        if (incomingCallData?.callInviteId) {
+            await supabase.from('call_invites').update({ status: 'declined' }).eq('id', incomingCallData.callInviteId);
+        }
+
         if (mediaConnection) {
             mediaConnection.close();
             mediaConnection = null;
         }
     };
 
-    ui.callBtn.onclick = async () => {
-        if (!currentChatFriend || currentChatType !== 'friend') return;
+    const showOutgoingCallUI = (friendName) => {
+        const callUIHTML = `
+            <div id="outgoing-call-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10000; color: white;">
+                <div class="avatar" style="width: 120px; height: 120px; font-size: 48px; margin-bottom: 2rem;">${friendName[0].toUpperCase()}</div>
+                <h2 style="margin-bottom: 0.5rem;">Calling ${friendName}...</h2>
+                <p style="color: rgba(255, 255, 255, 0.7); margin-bottom: 3rem;">Waiting for response</p>
+                <button id="cancel-outgoing-call" style="padding: 1rem 2rem; background: var(--error); color: white; border: none; border-radius: var(--button-border-radius); cursor: pointer; font-size: 1rem;">
+                    <i class="fa-solid fa-phone-slash"></i> Cancel
+                </button>
+            </div>
+        `;
+        const overlay = document.createElement('div');
+        overlay.innerHTML = callUIHTML;
+        document.body.appendChild(overlay.firstElementChild);
+
+        document.getElementById('cancel-outgoing-call').onclick = () => {
+            const outgoingOverlay = document.getElementById('outgoing-call-overlay');
+            if (outgoingOverlay) outgoingOverlay.remove();
+            if (mediaConnection) {
+                mediaConnection.close();
+                mediaConnection = null;
+            }
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+        };
+    };
+
+    const hideOutgoingCallUI = () => {
+        const outgoingOverlay = document.getElementById('outgoing-call-overlay');
+        if (outgoingOverlay) {
+            outgoingOverlay.remove();
+        }
+    };
+
+    const startCall = async () => {
+        if (!currentChatFriend || currentChatType !== 'friend') {
+            return;
+        }
+
+        showOutgoingCallUI(currentChatFriend.username);
+
+        const callInvite = {
+            caller_id: currentUser.id,
+            callee_id: currentChatFriend.id,
+            status: 'pending',
+            created_at: new Date().toISOString()
+        };
+
+        const { data: existingCall } = await supabase
+            .from('call_invites')
+            .select('*')
+            .eq('caller_id', currentUser.id)
+            .eq('callee_id', currentChatFriend.id)
+            .eq('status', 'pending')
+            .single();
+
+        if (existingCall) {
+            hideOutgoingCallUI();
+            showInfoModal('Call already pending', 'You already have a pending call to this user.');
+            return;
+        }
+
+        const { data: insertedInvite } = await supabase
+            .from('call_invites')
+            .insert([callInvite])
+            .select()
+            .single();
+
 
         const { data: friendProfile } = await supabase
             .from('profiles')
@@ -2042,37 +2254,40 @@ window.addGroupReaction = async (messageId) => {
             .eq('id', currentChatFriend.id)
             .single();
 
-        if (!friendProfile?.peer_id) {
-            alert('Friend is not available for calls');
-            return;
-        }
+        if (friendProfile?.peer_id) {
+            const startTime = Date.now();
 
-        const startTime = Date.now();
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
 
-        try {
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                const call = peer.call(friendProfile.peer_id, localStream, {
+                    metadata: { from: currentUser.id, callInviteId: insertedInvite.id }
+                });
 
-            const call = peer.call(friendProfile.peer_id, localStream, {
-                metadata: { from: currentUser.id }
-            });
+                mediaConnection = call;
 
-            mediaConnection = call;
+                call.on('stream', (remoteStream) => {
+                    hideOutgoingCallUI();
+                    showCallUI();
+                    addVideoStream('local', localStream, currentUser);
+                    addVideoStream('remote', remoteStream, currentChatFriend);
+                });
 
-            call.on('stream', (remoteStream) => {
-                showCallUI();
-                addVideoStream('local', localStream, currentUser);
-                addVideoStream('remote', remoteStream, currentChatFriend);
-            });
+                call.on('close', async () => {
+                    hideOutgoingCallUI();
+                    const duration = Math.floor((Date.now() - startTime) / 1000);
+                    await saveCallRecord(currentChatFriend.id, duration);
+                    await supabase.from('call_invites').update({ status: 'completed' }).eq('id', insertedInvite.id);
+                    endCall();
+                });
 
-            call.on('close', async () => {
-                const duration = Math.floor((Date.now() - startTime) / 1000);
-                await saveCallRecord(currentChatFriend.id, duration);
-                endCall();
-            });
-
-        } catch (error) {
-            console.error('Error accessing media devices:', error);
-            alert('Could not access camera/microphone');
+            } catch (error) {
+                hideOutgoingCallUI();
+                showInfoModal('Media access denied', 'Could not access camera/microphone. Please check your permissions.');
+            }
+        } else {
+            hideOutgoingCallUI();
+            showInfoModal('Call sent', 'Your friend will see the call invitation when they come online.');
         }
     };
 
@@ -2110,19 +2325,29 @@ window.addGroupReaction = async (messageId) => {
         const placeholder = document.createElement('div');
         placeholder.className = 'video-off-placeholder';
         placeholder.innerHTML = `
-            <div class="avatar">${user.avatar_url ? `<img src="${user.avatar_url}" alt="${user.username}">` : user.username[0].toUpperCase()}</div>
-            <span>${user.username}</span>
-        `;
+        <div class="avatar">${user.avatar_url ? `<img src="${user.avatar_url}" alt="${user.username}">` : user.username[0].toUpperCase()}</div>
+        <span>${user.username}</span>
+    `;
 
         tile.appendChild(video);
         tile.appendChild(placeholder);
         ui.videoGrid.appendChild(tile);
+
+        const hasVideo = stream.getVideoTracks().length > 0 && stream.getVideoTracks()[0].enabled;
+        tile.classList.toggle('video-off', !hasVideo);
     };
 
     const updateVideoState = (id, enabled) => {
         const tile = document.getElementById(`video-${id}`);
         if (tile) {
             tile.classList.toggle('video-off', !enabled);
+            const video = tile.querySelector('video');
+            if (video && video.srcObject) {
+                const videoTrack = video.srcObject.getVideoTracks()[0];
+                if (videoTrack) {
+                    videoTrack.enabled = enabled;
+                }
+            }
         }
     };
 
@@ -2158,72 +2383,65 @@ window.addGroupReaction = async (messageId) => {
         ui.toggleVideoBtn.innerHTML = callState.isVideoEnabled ? '<i class="fa-solid fa-video"></i>' : '<i class="fa-solid fa-video-slash"></i>';
     };
 
-    ui.toggleChatBtn.onclick = () => {
-        const isVisible = ui.chatOverlay.classList.contains('visible');
-        ui.chatOverlayBackdrop.classList.toggle('visible', !isVisible);
-        ui.chatOverlay.classList.toggle('visible', !isVisible);
-
-        if (!isVisible) {
-            ui.chatOverlayContent.innerHTML = '';
-            const chatClone = ui.chatView.cloneNode(true);
-            chatClone.classList.remove('hidden');
-            ui.chatOverlayContent.appendChild(chatClone);
-        }
-    };
-
-    ui.chatOverlayBackdrop.onclick = () => {
-        ui.chatOverlayBackdrop.classList.remove('visible');
-        ui.chatOverlay.classList.remove('visible');
-    };
-
-    const setupDrag = () => {
-        let isDragging = false;
-        let startY, startHeight;
-
-        const dragStart = (e) => {
-            isDragging = true;
-            startY = e.pageY || e.touches[0].pageY;
-            startHeight = ui.chatOverlay.offsetHeight;
-            ui.chatOverlay.style.transition = 'none';
-            document.body.style.userSelect = 'none';
-        };
-
-        const dragMove = (e) => {
-            if (!isDragging) return;
-            e.preventDefault();
-            const currentY = e.pageY || e.touches[0].pageY;
-            const diffY = currentY - startY;
-            let newHeight = startHeight - diffY;
-
-            const minHeight = 200;
-            const maxHeight = window.innerHeight * 0.9;
-            if (newHeight < minHeight) newHeight = minHeight;
-            if (newHeight > maxHeight) newHeight = maxHeight;
-
-            ui.chatOverlay.style.height = `${newHeight}px`;
-        };
-
-        const dragEnd = () => {
-            if (!isDragging) return;
-            isDragging = false;
-            ui.chatOverlay.style.transition = 'transform 0.3s ease-out, height 0.3s ease-out';
-            document.body.style.userSelect = '';
-
-            const currentHeight = ui.chatOverlay.offsetHeight;
-            if (currentHeight < startHeight * 0.7 && currentHeight < 300) {
-                ui.chatOverlayBackdrop.classList.remove('visible');
-                ui.chatOverlay.classList.remove('visible');
-                ui.chatOverlay.style.height = '';
+    ui.shareScreenBtn.onclick = async () => {
+        if (callState.isScreenSharing) {
+            try {
+                const cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                const videoTrack = cameraStream.getVideoTracks()[0];
+                const sender = mediaConnection.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                if (sender) {
+                    await sender.replaceTrack(videoTrack);
+                }
+                if (localStream) {
+                    localStream.getVideoTracks()[0].stop();
+                    localStream.removeTrack(localStream.getVideoTracks()[0]);
+                    localStream.addTrack(videoTrack);
+                }
+                callState.isScreenSharing = false;
+                ui.shareScreenBtn.classList.remove('active');
+            } catch (error) {
+                showInfoModal('Error', 'Could not stop screen sharing.');
             }
-        };
+        } else {
+            try {
+                const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                const screenTrack = screenStream.getVideoTracks()[0];
 
-        ui.chatOverlayHeader.addEventListener('mousedown', dragStart);
-        document.addEventListener('mousemove', dragMove);
-        document.addEventListener('mouseup', dragEnd);
+                const sender = mediaConnection.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                if (sender) {
+                    await sender.replaceTrack(screenTrack);
+                }
 
-        ui.chatOverlayHeader.addEventListener('touchstart', dragStart, { passive: false });
-        document.addEventListener('touchmove', dragMove, { passive: false });
-        document.addEventListener('touchend', dragEnd);
+                if (localStream) {
+                    const oldTrack = localStream.getVideoTracks()[0];
+                    localStream.removeTrack(oldTrack);
+                    localStream.addTrack(screenTrack);
+                }
+
+                callState.isScreenSharing = true;
+                ui.shareScreenBtn.classList.add('active');
+
+                screenTrack.onended = async () => {
+                    try {
+                        const cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                        const videoTrack = cameraStream.getVideoTracks()[0];
+                        const sender = mediaConnection.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                        if (sender) {
+                            await sender.replaceTrack(videoTrack);
+                        }
+                        if (localStream) {
+                            localStream.removeTrack(localStream.getVideoTracks()[0]);
+                            localStream.addTrack(videoTrack);
+                        }
+                        callState.isScreenSharing = false;
+                        ui.shareScreenBtn.classList.remove('active');
+                    } catch (err) {
+                    }
+                };
+            } catch (error) {
+                showInfoModal('Screen Share Error', 'Could not start screen sharing. Please try again.');
+            }
+        }
     };
 
     const setupSettingsDrag = () => {
@@ -2286,7 +2504,6 @@ window.addGroupReaction = async (messageId) => {
         });
     };
 
-    setupDrag();
     setupSettingsDrag();
 
     const showSettingsModal = () => {
@@ -2320,5 +2537,5 @@ window.addGroupReaction = async (messageId) => {
     });
 
     handleAuth();
-setTimeout(addFileButton, 500);
+    setTimeout(addFileButton, 500);
 });
