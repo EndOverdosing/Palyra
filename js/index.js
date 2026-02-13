@@ -2825,12 +2825,6 @@ document.addEventListener('DOMContentLoaded', () => {
             video.muted = true;
         } else {
             video.muted = false;
-            stream.getAudioTracks().forEach(track => {
-                track.enabled = true;
-            });
-            stream.getVideoTracks().forEach(track => {
-                track.enabled = true;
-            });
         }
 
         console.log(`Video element created for ${type}:`, video);
@@ -2873,19 +2867,36 @@ document.addEventListener('DOMContentLoaded', () => {
         ui.videoGrid.appendChild(tile);
         console.log(`${type} tile appended, videoGrid children count:`, ui.videoGrid.children.length);
 
-        stream.getVideoTracks().forEach(track => {
-            console.log(`Video track for ${type}:`, track);
-            console.log(`Track enabled: ${track.enabled}, muted: ${track.muted}, readyState: ${track.readyState}`);
+        const videoTracks = stream.getVideoTracks();
+        if (videoTracks.length > 0) {
+            videoTracks.forEach(track => {
+                console.log(`Video track for ${type}:`, track);
+                console.log(`Track enabled: ${track.enabled}, muted: ${track.muted}, readyState: ${track.readyState}`);
 
-            track.onended = () => {
-                console.log(`Video track ended for ${type}`);
-                tile.classList.add('video-off');
-            };
-            if (!track.enabled) {
-                console.log(`Video track disabled for ${type}, adding video-off class`);
-                tile.classList.add('video-off');
-            }
-        });
+                if (track.muted || !track.enabled) {
+                    console.log(`Video is off for ${type}, showing placeholder`);
+                    tile.classList.add('video-off');
+                }
+
+                track.onmute = () => {
+                    console.log(`Video track muted for ${type}`);
+                    tile.classList.add('video-off');
+                };
+
+                track.onunmute = () => {
+                    console.log(`Video track unmuted for ${type}`);
+                    tile.classList.remove('video-off');
+                };
+
+                track.onended = () => {
+                    console.log(`Video track ended for ${type}`);
+                    tile.classList.add('video-off');
+                };
+            });
+        } else {
+            console.log(`No video tracks for ${type}, showing placeholder`);
+            tile.classList.add('video-off');
+        }
 
         console.log(`✅ addVideoStream completed for ${type}`);
     };
