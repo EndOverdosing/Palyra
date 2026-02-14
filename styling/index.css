@@ -2082,7 +2082,7 @@ select option {
     bottom: 5rem;
 }
 
-@media (max-width: 996px) and (orientation: landscape) {
+@media (min-width: 776px) and (orientation: landscape) {
     #sidebar {
         width: 350px !important;
     }
