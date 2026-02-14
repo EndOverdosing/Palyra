@@ -70,21 +70,31 @@
                     <button id="logout-btn" title="Logout"><i class="fa-solid fa-right-from-bracket"></i></button>
                 </div>
             </div>
-            <div class="search-bar">
-                <div class="search-input-wrapper">
-                    <i class="fa-solid fa-search"></i>
-                    <input type="text" id="search-friends-input" placeholder="Search conversations..."
-                        autocomplete="off">
-                </div>
-            </div>
-            <nav id="friends-list"></nav>
+            <div class="list-header">Conversations</div>
+            <nav id="content-list"></nav>
+            <nav id="navbar-in-sidebar">
+                <button class="navbar-btn active" data-tab="personal">
+                    <i class="fa-solid fa-user"></i>
+                    <span>Personal</span>
+                </button>
+                <button class="navbar-btn" data-tab="global">
+                    <i class="fa-solid fa-globe"></i>
+                    <span>Global</span>
+                </button>
+            </nav>
         </aside>
 
         <main id="chat-container">
             <div id="welcome-screen">
                 <i class="fa-solid fa-comments"></i>
-                <h2>Select a chat to start messaging</h2>
-                <p>Your conversations are secure and private.</p>
+                <h2 class="welcome-title-desktop">Select a chat to start messaging</h2>
+                <h2 class="welcome-title-mobile">Tap the menu below to get started</h2>
+                <p class="welcome-subtitle-desktop">Your conversations are secure and private.</p>
+                <p class="welcome-subtitle-mobile">Choose between Personal chats or Global servers</p>
+                <button id="open-navbar-btn" class="mobile-only navbar-trigger-btn">
+                    <i class="fa-solid fa-bars"></i>
+                    <span>Open Menu</span>
+                </button>
             </div>
             <div id="chat-view" class="hidden">
                 <header id="chat-header">
@@ -100,7 +110,9 @@
                         </div>
                     </div>
                     <div class="chat-actions">
-                        <button id="call-btn"><i class="fa-solid fa-video"></i></button>
+                        <button id="call-btn" class="personal-chat-only"><i class="fa-solid fa-video"></i></button>
+                        <button id="server-info-btn" class="server-chat-only hidden"><i
+                                class="fa-solid fa-info-circle"></i></button>
                         <button id="chat-options-btn"><i class="fa-solid fa-ellipsis-vertical"></i></button>
                     </div>
                 </header>
@@ -242,6 +254,60 @@
                     <textarea id="file-caption-input" placeholder="Add a caption (optional)..." rows="2"></textarea>
                     <button type="submit">Send</button>
                 </form>
+            </div>
+
+            <div id="create-server-modal" class="hidden">
+                <h2>Create Server</h2>
+                <form id="create-server-form">
+                    <div class="input-group">
+                        <label for="server-name-input">Server Name</label>
+                        <input type="text" id="server-name-input" placeholder="My Server" required>
+                    </div>
+                    <div class="input-group">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="server-private-toggle">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label">Private Server</span>
+                        </label>
+                    </div>
+                    <div class="input-group" id="server-password-group" style="display: none;">
+                        <label for="server-password-input">Password</label>
+                        <input type="password" id="server-password-input" placeholder="Enter password">
+                    </div>
+                    <button type="submit">Create Server</button>
+                </form>
+            </div>
+
+            <div id="join-server-modal" class="hidden">
+                <h2>Join Server</h2>
+                <form id="join-server-form">
+                    <div class="input-group">
+                        <label for="server-password-join">Password</label>
+                        <input type="password" id="server-password-join" placeholder="Enter server password" required>
+                    </div>
+                    <button type="submit">Join</button>
+                </form>
+            </div>
+
+            <div id="server-info-modal" class="hidden">
+                <h2 id="server-info-name"></h2>
+                <div class="server-info-content">
+                    <div class="info-item">
+                        <span class="info-label">Owner:</span>
+                        <span class="info-value" id="server-owner-name"></span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Type:</span>
+                        <span class="info-value" id="server-type"></span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Members:</span>
+                        <div id="server-members-list"></div>
+                    </div>
+                </div>
+                <div class="server-actions" id="server-owner-actions" style="display: none;">
+                    <button class="danger-btn" id="delete-server-btn">Delete Server</button>
+                </div>
             </div>
         </div>
     </div>

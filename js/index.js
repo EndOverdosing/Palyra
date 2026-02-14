@@ -31,7 +31,6 @@ document.addEventListener('DOMContentLoaded', () => {
         logoutBtn: document.getElementById('logout-btn'),
         settingsBtn: document.getElementById('settings-btn'),
         addFriendBtn: document.getElementById('add-friend-btn'),
-        friendsList: document.getElementById('friends-list'),
         chatContainer: document.getElementById('chat-container'),
         welcomeScreen: document.getElementById('welcome-screen'),
         chatView: document.getElementById('chat-view'),
@@ -103,7 +102,6 @@ document.addEventListener('DOMContentLoaded', () => {
         changeUsernameModal: document.getElementById('change-username-modal'),
         changeUsernameForm: document.getElementById('change-username-form'),
         newUsernameInput: document.getElementById('new-username-input'),
-        searchFriendsInput: document.getElementById('search-friends-input'),
         replyPreview: document.getElementById('reply-preview'),
         replyPreviewText: document.querySelector('.reply-preview-text'),
         cancelReplyBtn: document.getElementById('cancel-reply-btn'),
@@ -118,6 +116,27 @@ document.addEventListener('DOMContentLoaded', () => {
         friendRequestsModal: document.getElementById('friend-requests-modal'),
         requestsList: document.getElementById('requests-list'),
         closeChatPaneBtn: document.getElementById('close-chat-pane-btn'),
+        createServerBtn: document.getElementById('create-server-btn'),
+        createServerModal: document.getElementById('create-server-modal'),
+        createServerForm: document.getElementById('create-server-form'),
+        serverNameInput: document.getElementById('server-name-input'),
+        serverPrivateToggle: document.getElementById('server-private-toggle'),
+        serverPasswordInput: document.getElementById('server-password-input'),
+        serverPasswordGroup: document.getElementById('server-password-group'),
+        joinServerModal: document.getElementById('join-server-modal'),
+        joinServerForm: document.getElementById('join-server-form'),
+        serverPasswordJoin: document.getElementById('server-password-join'),
+        serverInfoModal: document.getElementById('server-info-modal'),
+        serverInfoName: document.getElementById('server-info-name'),
+        serverOwnerName: document.getElementById('server-owner-name'),
+        serverType: document.getElementById('server-type'),
+        serverMembersList: document.getElementById('server-members-list'),
+        serverOwnerActions: document.getElementById('server-owner-actions'),
+        deleteServerBtn: document.getElementById('delete-server-btn'),
+        serverInfoBtn: document.getElementById('server-info-btn'),
+        contentList: document.getElementById('content-list'),
+        searchInput: document.getElementById('search-input'),
+        navbarInSidebar: document.getElementById('navbar-in-sidebar'),
     };
 
     let peer, localStream, dataConnection, mediaConnection, currentUser, currentChatFriend, friends = {}, subscriptions = [];
@@ -127,6 +146,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let incomingCallTimeout = null;
     let isInCall = false;
     let typingTimeout = null;
+
+    let currentTab = 'personal';
+    let servers = [];
+    let currentServer = null;
+    let selectedServerForJoin = null;
 
     let keepAliveInterval = null;
     let currentChatType = 'friend';
@@ -145,6 +169,501 @@ document.addEventListener('DOMContentLoaded', () => {
         onlineStatus: true,
         readReceipts: true
     };
+
+    function closeAllModals() {
+        ui.modalContainer.classList.add('hidden');
+        ui.addFriendModal?.classList.add('hidden');
+        ui.friendRequestsModal?.classList.add('hidden');
+        ui.incomingCallModal?.classList.add('hidden');
+        ui.confirmationModal?.classList.add('hidden');
+        ui.infoModal?.classList.add('hidden');
+        ui.chatOptionsModal?.classList.add('hidden');
+        ui.friendProfileModal?.classList.add('hidden');
+        ui.changeUsernameModal?.classList.add('hidden');
+        ui.editMessageModal?.classList.add('hidden');
+        ui.filePreviewModal?.classList.add('hidden');
+        ui.createServerModal?.classList.add('hidden');
+        ui.joinServerModal?.classList.add('hidden');
+        ui.serverInfoModal?.classList.add('hidden');
+    }
+
+    function showInfo(title, message) {
+        closeAllModals();
+        ui.infoTitle.textContent = title;
+        ui.infoMessage.textContent = message;
+        ui.infoModal.classList.remove('hidden');
+        ui.modalContainer.classList.remove('hidden');
+    }
+
+    function showConfirmation(title, message, onConfirm) {
+        closeAllModals();
+        ui.confirmationTitle.textContent = title;
+        ui.confirmationMessage.textContent = message;
+        ui.confirmationModal.classList.remove('hidden');
+        ui.modalContainer.classList.remove('hidden');
+
+        ui.confirmBtn.onclick = () => {
+            onConfirm();
+            closeAllModals();
+        };
+    }
+
+    function switchTab(tab) {
+        currentTab = tab;
+        document.querySelectorAll('.navbar-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === tab);
+        });
+
+        document.querySelectorAll('.personal-only').forEach(el => {
+            el.classList.toggle('hidden', tab !== 'personal');
+        });
+
+        document.querySelectorAll('.global-only').forEach(el => {
+            el.classList.toggle('hidden', tab !== 'global');
+        });
+
+        if (tab !== 'personal') {
+            ui.welcomeScreen.classList.remove('hidden');
+            ui.chatView.classList.add('hidden');
+        }
+
+        currentChatFriend = null;
+        currentServer = null;
+
+        unsubscribeFromServerMessages();
+
+        if (tab === 'global') {
+            loadServers();
+        } else if (tab === 'personal') {
+            ui.welcomeScreen.classList.remove('hidden');
+            ui.chatView.classList.add('hidden');
+            renderConversationsList();
+        }
+    }
+
+    document.querySelectorAll('.navbar-btn').forEach(btn => {
+        btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    });
+
+    ui.createServerBtn?.addEventListener('click', () => {
+        closeAllModals();
+        ui.createServerModal.classList.remove('hidden');
+        ui.modalContainer.classList.remove('hidden');
+    });
+
+    ui.infoOkBtn?.addEventListener('click', () => {
+        closeAllModals();
+    });
+
+    ui.serverPrivateToggle?.addEventListener('change', () => {
+        ui.serverPasswordGroup.style.display = ui.serverPrivateToggle.checked ? 'block' : 'none';
+        if (!ui.serverPrivateToggle.checked) {
+            ui.serverPasswordInput.value = '';
+        }
+    });
+
+    ui.createServerForm?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = ui.serverNameInput.value.trim();
+        const isPrivate = ui.serverPrivateToggle.checked;
+        const password = isPrivate ? ui.serverPasswordInput.value : null;
+
+        if (!name) return;
+        if (isPrivate && !password) {
+            showInfo('Error', 'Please enter a password for private server');
+            return;
+        }
+
+        try {
+            const { data, error } = await supabaseClient.from('servers').insert({
+                name,
+                owner_id: currentUser.id,
+                is_private: isPrivate,
+                password: password,
+                created_at: new Date().toISOString()
+            }).select().single();
+
+            if (error) throw error;
+
+            await supabaseClient.from('server_members').insert({
+                server_id: data.id,
+                user_id: currentUser.id,
+                joined_at: new Date().toISOString()
+            });
+
+            ui.serverNameInput.value = '';
+            ui.serverPrivateToggle.checked = false;
+            ui.serverPasswordInput.value = '';
+            closeAllModals();
+            loadServers();
+            showInfo('Success', 'Server created successfully');
+        } catch (error) {
+            showInfo('Error', error.message);
+        }
+    });
+
+    async function loadServers() {
+        try {
+            const { data, error } = await supabaseClient
+                .from('servers')
+                .select('*, server_members(count)')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            servers = data || [];
+            renderServers();
+        } catch (error) {
+            console.error('Error loading servers:', error);
+        }
+    }
+
+    function renderServers() {
+        ui.contentList.innerHTML = '';
+
+        const searchTerm = ui.searchInput?.value?.toLowerCase() || '';
+        const filteredServers = servers.filter(server => {
+            return server.name.toLowerCase().includes(searchTerm);
+        });
+
+        filteredServers.forEach(server => {
+            const serverItem = document.createElement('div');
+            serverItem.className = 'server-item';
+
+            const initials = server.name.substring(0, 2).toUpperCase();
+            const memberCount = server.server_members?.[0]?.count || 0;
+
+            serverItem.innerHTML = `
+            <div class="server-icon">${initials}</div>
+            <div class="server-info">
+                <span class="server-name">${server.name}</span>
+                <div class="server-meta">
+                    <span>${memberCount} members</span>
+                    ${server.is_private ? '<i class="fa-solid fa-lock server-lock-icon"></i>' : ''}
+                </div>
+            </div>
+        `;
+
+            serverItem.addEventListener('click', () => joinServer(server));
+            ui.contentList.appendChild(serverItem);
+        });
+    }
+
+    async function joinServer(server) {
+        try {
+            const { data: membership } = await supabaseClient
+                .from('server_members')
+                .select()
+                .eq('server_id', server.id)
+                .eq('user_id', currentUser.id)
+                .single();
+
+            if (membership) {
+                openServerChat(server);
+            } else {
+                if (server.is_private) {
+                    selectedServerForJoin = server;
+                    closeAllModals();
+                    ui.joinServerModal.classList.remove('hidden');
+                    ui.modalContainer.classList.remove('hidden');
+                } else {
+                    await addMemberToServer(server.id);
+                    openServerChat(server);
+                }
+            }
+        } catch (error) {
+            console.error('Error joining server:', error);
+        }
+    }
+
+    ui.joinServerForm?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const password = ui.serverPasswordJoin.value;
+
+        if (!selectedServerForJoin) return;
+
+        if (password === selectedServerForJoin.password) {
+            await addMemberToServer(selectedServerForJoin.id);
+            openServerChat(selectedServerForJoin);
+            ui.serverPasswordJoin.value = '';
+            closeAllModals();
+        } else {
+            showInfo('Error', 'Incorrect password');
+        }
+    });
+
+    async function addMemberToServer(serverId) {
+        await supabaseClient.from('server_members').insert({
+            server_id: serverId,
+            user_id: currentUser.id,
+            joined_at: new Date().toISOString()
+        });
+        loadServers();
+    }
+
+    document.getElementById('open-navbar-btn')?.addEventListener('click', () => {
+        if (window.innerWidth <= 768) {
+            ui.sidebar.classList.add('open');
+        }
+    });
+
+    async function openServerChat(server) {
+        currentServer = server;
+        currentChatFriend = null;
+        currentChatType = 'server';
+
+        ui.welcomeScreen.classList.add('hidden');
+        ui.chatView.classList.remove('hidden');
+
+        if (window.innerWidth <= 768) {
+            ui.sidebar.classList.add('hidden');
+            ui.chatContainer.classList.add('active');
+        }
+
+        setTimeout(() => {
+            ui.messagesContainer.scrollTop = ui.messagesContainer.scrollHeight;
+        }, 100);
+
+        ui.chatFriendName.textContent = server.name;
+        ui.chatStatusText.textContent = '';
+        ui.chatFriendStatus.style.display = 'none';
+
+        document.querySelectorAll('.personal-chat-only').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.server-chat-only').forEach(el => el.classList.remove('hidden'));
+
+        const initials = server.name.substring(0, 2).toUpperCase();
+        ui.chatAvatar.textContent = initials;
+        ui.chatAvatar.style.background = 'var(--primary-accent)';
+
+        if (window.innerWidth <= 768) {
+            ui.sidebar.classList.remove('open');
+        }
+
+        await loadServerMessages(server.id);
+        subscribeToServerMessages(server.id);
+    }
+
+    let serverMessagesSubscription = null;
+
+    function subscribeToServerMessages(serverId) {
+
+        unsubscribeFromServerMessages();
+
+        const channelName = `server_messages_${serverId}`;
+
+        serverMessagesSubscription = supabaseClient
+            .channel(channelName, {
+                config: {
+                    broadcast: { self: true }
+                }
+            })
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'server_messages',
+                filter: `server_id=eq.${serverId}`
+            }, async (payload) => {
+
+                if (payload.eventType === 'INSERT') {
+
+                    const { data: userData } = await supabaseClient
+                        .from(currentUser.table_name || 'profiles')
+                        .select('username')
+                        .eq('id', payload.new.user_id)
+                        .single();
+
+                    displayServerMessage({ ...payload.new, username: userData?.username });
+                }
+            })
+            .subscribe((status, err) => {
+                if (err) {
+                    console.error('[REALTIME] Subscription error:', err);
+                }
+                if (status === 'SUBSCRIBED') {
+                }
+            });
+    }
+
+    function unsubscribeFromServerMessages() {
+        if (serverMessagesSubscription) {
+            supabaseClient.removeChannel(serverMessagesSubscription);
+            serverMessagesSubscription = null;
+        }
+    }
+
+    async function loadServerMessages(serverId) {
+        // Show skeleton loaders
+        showSkeletonMessages();
+
+        try {
+            const { data, error } = await supabaseClient
+                .from('server_messages')
+                .select('*')
+                .eq('server_id', serverId)
+                .order('created_at', { ascending: true });
+
+            if (error) throw error;
+
+            // Fetch all user data in parallel
+            const userIds = [...new Set((data || []).map(msg => msg.user_id))];
+            const userPromises = userIds.map(async (userId) => {
+                const { data: userData } = await supabaseClient
+                    .from(currentUser.table_name || 'profiles')
+                    .select('username')
+                    .eq('id', userId)
+                    .single();
+                return { userId, username: userData?.username };
+            });
+
+            const userResults = await Promise.all(userPromises);
+            const userMap = userResults.reduce((acc, { userId, username }) => {
+                acc[userId] = username || 'Unknown';
+                return acc;
+            }, {});
+
+            // Render all messages at once
+            renderAllServerMessages(data || [], userMap);
+        } catch (error) {
+            console.error('[LOAD] Error loading server messages:', error);
+            // Clear skeletons on error
+            ui.messagesContainer.innerHTML = '';
+        }
+    }
+
+    function displayServerMessage(msg) {
+        if (document.querySelector(`[data-message-id="${msg.id}"]`)) {
+            return;
+        }
+
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${msg.user_id === currentUser.id ? 'sent' : 'received'}`;
+        messageDiv.setAttribute('data-message-id', msg.id);
+
+        const username = msg.username || 'Unknown';
+
+        messageDiv.innerHTML = `
+        ${msg.user_id !== currentUser.id ? `<strong>${username}</strong><br>` : ''}
+        <div class="message-content">${msg.content}</div>
+        <span class="message-time">${new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+    `;
+
+        ui.messagesContainer.appendChild(messageDiv);
+        ui.messagesContainer.scrollTop = ui.messagesContainer.scrollHeight;
+    }
+
+    ui.serverInfoBtn?.addEventListener('click', async () => {
+        if (!currentServer) return;
+
+        try {
+            const { data: owner } = await supabaseClient
+                .from(currentUser.table_name || 'profiles')
+                .select('username')
+                .eq('id', currentServer.owner_id)
+                .single();
+
+            const { data: memberIds, error: membersError } = await supabaseClient
+                .from('server_members')
+                .select('user_id')
+                .eq('server_id', currentServer.id);
+
+            if (membersError) throw membersError;
+
+            const members = [];
+            for (const member of memberIds || []) {
+                const { data: userData } = await supabaseClient
+                    .from(currentUser.table_name || 'profiles')
+                    .select('username')
+                    .eq('id', member.user_id)
+                    .single();
+
+                members.push({
+                    user_id: member.user_id,
+                    username: userData?.username || 'Unknown'
+                });
+            }
+
+
+            closeAllModals();
+            ui.serverInfoName.textContent = currentServer.name;
+            ui.serverOwnerName.textContent = owner?.username || 'Unknown';
+            ui.serverType.textContent = currentServer.is_private ? 'Private' : 'Public';
+
+            ui.serverMembersList.innerHTML = '';
+            members.forEach(member => {
+                const memberDiv = document.createElement('div');
+                memberDiv.className = 'member-item';
+
+                const username = member.username;
+                const isOwner = member.user_id === currentServer.owner_id;
+                const initials = username.substring(0, 2).toUpperCase();
+
+                memberDiv.innerHTML = `
+                <div class="member-avatar">${initials}</div>
+                <div class="member-info">
+                    <span class="member-name">${username}</span>
+                    <span class="member-role">${isOwner ? 'Owner' : 'Member'}</span>
+                </div>
+                ${currentUser.id === currentServer.owner_id && !isOwner ? `
+                    <div class="member-actions">
+                        <button onclick="kickMember('${member.user_id}')">Kick</button>
+                    </div>
+                ` : ''}
+            `;
+
+                ui.serverMembersList.appendChild(memberDiv);
+            });
+
+            ui.serverOwnerActions.style.display = currentUser.id === currentServer.owner_id ? 'block' : 'none';
+            ui.serverInfoModal.classList.remove('hidden');
+            ui.modalContainer.classList.remove('hidden');
+        } catch (error) {
+            console.error('[INFO] Error loading server info:', error);
+        }
+    });
+
+    window.kickMember = async function (userId) {
+        if (!currentServer) return;
+
+        try {
+            await supabaseClient
+                .from('server_members')
+                .delete()
+                .eq('server_id', currentServer.id)
+                .eq('user_id', userId);
+
+            ui.serverInfoBtn.click();
+            showInfo('Success', 'Member kicked');
+        } catch (error) {
+            showInfo('Error', error.message);
+        }
+    };
+
+    ui.deleteServerBtn?.addEventListener('click', async () => {
+        if (!currentServer) return;
+
+        showConfirmation(
+            'Delete Server',
+            'Are you sure? This cannot be undone.',
+            async () => {
+                try {
+                    await supabaseClient.from('servers').delete().eq('id', currentServer.id);
+                    closeAllModals();
+                    switchTab('global');
+                    showInfo('Success', 'Server deleted');
+                } catch (error) {
+                    showInfo('Error', error.message);
+                }
+            }
+        );
+    });
+
+    ui.searchInput?.addEventListener('input', () => {
+        if (currentTab === 'global') {
+            renderServers();
+        } else {
+            renderConversationsList();
+        }
+    });
 
     const HEARTBEAT_INTERVAL = 3000;
     let heartbeatTimer = null;
@@ -323,7 +842,84 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     ui.chatOptionsBtn.onclick = () => {
-        showModal(ui.chatOptionsModal);
+        if (currentChatType === 'friend' && currentChatFriend) {
+            const friendOptionsHTML = `
+            <h2>Chat Options</h2>
+            <div class="friend-options-list">
+                <button class="option-btn" id="view-profile-btn-dynamic">
+                    <i class="fa-solid fa-user"></i>
+                    <span>View Profile</span>
+                </button>
+                <button class="option-btn" id="mute-conversation-btn-dynamic">
+                    <i class="fa-solid fa-bell-slash"></i>
+                    <span>Mute Conversation</span>
+                </button>
+                <button class="option-btn" id="block-user-btn-dynamic">
+                    <i class="fa-solid fa-ban"></i>
+                    <span>Block User</span>
+                </button>
+                <button class="option-btn danger" id="unfriend-btn-dynamic">
+                    <i class="fa-solid fa-user-minus"></i>
+                    <span>Remove Friend</span>
+                </button>
+            </div>
+        `;
+
+            ui.chatOptionsModal.innerHTML = friendOptionsHTML;
+            showModal(ui.chatOptionsModal);
+
+            document.getElementById('view-profile-btn-dynamic').onclick = ui.viewProfileBtn.onclick;
+            document.getElementById('block-user-btn-dynamic').onclick = ui.blockUserBtn.onclick;
+
+        } else if (currentChatType === 'server' && currentServer) {
+            const serverOptionsHTML = `
+            <h2>Server Options</h2>
+            <div class="friend-options-list">
+                <button class="option-btn" id="server-info-btn-dynamic">
+                    <i class="fa-solid fa-info-circle"></i>
+                    <span>Server Info</span>
+                </button>
+                <button class="option-btn" id="mute-server-btn-dynamic">
+                    <i class="fa-solid fa-bell-slash"></i>
+                    <span>Mute Server</span>
+                </button>
+                <button class="option-btn danger" id="leave-server-btn-dynamic">
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                    <span>Leave Server</span>
+                </button>
+            </div>
+        `;
+
+            ui.chatOptionsModal.innerHTML = serverOptionsHTML;
+            showModal(ui.chatOptionsModal);
+
+            document.getElementById('server-info-btn-dynamic').onclick = () => {
+                hideModal();
+                ui.serverInfoBtn.click();
+            };
+
+            document.getElementById('leave-server-btn-dynamic').onclick = async () => {
+                showConfirmation(
+                    'Leave Server',
+                    `Are you sure you want to leave ${currentServer.name}?`,
+                    async () => {
+                        try {
+                            await supabaseClient
+                                .from('server_members')
+                                .delete()
+                                .eq('server_id', currentServer.id)
+                                .eq('user_id', currentUser.id);
+
+                            hideModal();
+                            switchTab('global');
+                            showInfo('Success', 'Left server successfully');
+                        } catch (error) {
+                            showInfo('Error', error.message);
+                        }
+                    }
+                );
+            };
+        }
     };
 
     const showAuth = (show) => ui.authContainer.classList.toggle('hidden', !show);
@@ -1039,16 +1635,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (friendRequests.length > 0) {
             html += `<div class="list-header">Friend Requests (${friendRequests.length})</div>`;
             html += `<div class="friend-item" onclick="window.showFriendRequestsModal()">
-                <div class="avatar"><i class="fa-solid fa-user-plus"></i></div>
-                <div class="friend-info">
-                    <div class="friend-name">Pending Requests</div>
-                    <div class="friend-status">${friendRequests.length} request${friendRequests.length !== 1 ? 's' : ''}</div>
-                </div>
-            </div>`;
+            <div class="avatar"><i class="fa-solid fa-user-plus"></i></div>
+            <div class="friend-info">
+                <div class="friend-name">Pending Requests</div>
+                <div class="friend-status">${friendRequests.length} request${friendRequests.length !== 1 ? 's' : ''}</div>
+            </div>
+        </div>`;
         }
 
         if (conversations.length > 0) {
-            html += '<div class="list-header">Messages</div>';
             conversations.forEach(conv => {
                 if (conv.type === 'friend') {
                     const friend = conv.data;
@@ -1056,25 +1651,40 @@ document.addEventListener('DOMContentLoaded', () => {
                     const isBlocked = blockedUsers.has(friend.id);
                     if (!isBlocked) {
                         html += `
-                            <div class="friend-item" data-friend-id="${friend.id}" onclick="window.openChat('${friend.id}', 'friend')">
-                                <div class="avatar-wrapper">
-                                    <div class="avatar">${friend.avatar_url ? `<img src="${friend.avatar_url}" alt="${friend.username}">` : friend.username[0].toUpperCase()}</div>
-                                    <div class="status-indicator ${isOnline ? 'online' : ''}"></div>
-                                </div>
-                                <div class="friend-info">
-                                    <div class="friend-name">${friend.username}</div>
-                                    <div class="friend-status">${conv.lastMessage ? (conv.lastMessage.sender_id === currentUser.id ? 'You: ' : '') + (conv.lastMessage.content?.substring(0, 30) || 'Sent a file') : 'No messages yet'}</div>
-                                </div>
-                            </div>
-                        `;
+                <div class="friend-item" data-friend-id="${friend.id}" onclick="window.openChat('${friend.id}', 'friend')">
+                    <div class="avatar-wrapper">
+                        <div class="avatar">${friend.avatar_url ? `<img src="${friend.avatar_url}" alt="${friend.username}">` : friend.username[0].toUpperCase()}</div>
+                        <div class="status-indicator ${isOnline ? 'online' : ''}"></div>
+                    </div>
+                    <div class="friend-info">
+                        <div class="friend-name">${friend.username}</div>
+                        <div class="friend-status">${conv.lastMessage ? (conv.lastMessage.sender_id === currentUser.id ? 'You: ' : '') + (conv.lastMessage.content?.substring(0, 30) || 'Sent a file') : 'No messages yet'}</div>
+                    </div>
+                </div>
+            `;
                     }
                 }
             });
-        } else {
-            html += '<div class="list-header">No conversations yet</div>';
         }
 
-        ui.friendsList.innerHTML = html;
+        if (currentTab === 'global' && servers.length > 0) {
+            html += `<div class="list-header">Servers</div>`;
+            servers.forEach(server => {
+                html += `
+        <div class="server-item" data-server-id="${server.id}" onclick="window.openServerChat(${JSON.stringify(server).replace(/"/g, '&​quot;')})">
+            <div class="avatar-wrapper">
+                <div class="avatar server-avatar">${server.name.substring(0, 2).toUpperCase()}</div>
+            </div>
+            <div class="friend-info">
+                <div class="friend-name">${server.name}</div>
+                <div class="friend-status">${server.member_count || 0} members</div>
+            </div>
+        </div>
+    `;
+            });
+        }
+
+        ui.contentList.innerHTML = html;
 
         clearTimeout(renderConversationsTimeout);
         renderConversationsTimeout = setTimeout(() => {
@@ -1090,7 +1700,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const updateURLPath = (path) => {
         if (window.history && window.history.pushState) {
-            window.history.pushState({ path }, '', `/#/${path}`);
+            window.history.pushState({ path }, '', `/${path}`);
         }
     };
 
@@ -1223,7 +1833,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const friendInfo = document.querySelector('#chat-header .friend-info');
         if (friendInfo) {
             friendInfo.onclick = () => {
-                if (currentChatType === 'friend') {
+                if (currentChatType === 'friend' && currentChatFriend) {  // Added null check
                     ui.profileUsername.textContent = currentChatFriend.username;
                     ui.profileUsernameValue.textContent = currentChatFriend.username;
                     ui.profileAvatar.textContent = currentChatFriend.username[0].toUpperCase();
@@ -1235,11 +1845,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     const isOnline = onlineUsers.has(currentChatFriend.id);
                     ui.profileStatusDot.classList.toggle('online', isOnline);
                     ui.profileStatusText.textContent = isOnline ? 'Online' : 'Offline';
-
-                    const joinedDate = new Date(currentChatFriend.created_at).toLocaleDateString();
-                    ui.profileJoinedDate.textContent = joinedDate;
-
-                    showModal(ui.friendProfileModal);
                 }
             };
         }
@@ -1250,6 +1855,10 @@ document.addEventListener('DOMContentLoaded', () => {
             ui.sidebar.classList.add('hidden');
             ui.chatContainer.classList.add('active');
         }
+
+        setTimeout(() => {
+            ui.messagesContainer.scrollTop = ui.messagesContainer.scrollHeight;
+        }, 100);
 
         document.querySelectorAll('.friend-item').forEach(item => item.classList.remove('active'));
         const activeItem = document.querySelector(`[data-friend-id="${id}"]`);
@@ -1285,27 +1894,215 @@ document.addEventListener('DOMContentLoaded', () => {
         subscriptions.push(typingChannel);
     };
 
-    const loadMessages = async (friendId) => {
-        const { data: messages } = await supabase
-            .from('messages')
-            .select('*')
-            .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${currentUser.id})`)
-            .order('created_at', { ascending: true });
-
+    // Helper functions for skeleton loading and batch rendering
+    function showSkeletonMessages() {
         ui.messagesContainer.innerHTML = '';
-        for (const message of messages || []) {
+
+        // Show 5-8 skeleton messages
+        const skeletonCount = Math.floor(Math.random() * 4) + 5;
+
+        for (let i = 0; i < skeletonCount; i++) {
+            const isSent = Math.random() > 0.5;
+            const skeletonDiv = document.createElement('div');
+            skeletonDiv.className = `message-skeleton ${isSent ? 'sent' : 'received'}`;
+
+            skeletonDiv.innerHTML = `
+                <div class="message-skeleton-content"></div>
+                <div class="message-skeleton-time"></div>
+            `;
+
+            ui.messagesContainer.appendChild(skeletonDiv);
+        }
+    }
+
+    function renderAllMessages(messages) {
+        ui.messagesContainer.innerHTML = '';
+
+        if (messages.length === 0) return;
+
+        // Create document fragment for better performance
+        const fragment = document.createDocumentFragment();
+
+        messages.forEach(message => {
             const sender = message.sender_id === currentUser.id ? currentUser : currentChatFriend;
-            displayMessage(message, sender);
+            const messageDiv = createMessageElement(message, sender);
+            fragment.appendChild(messageDiv);
+        });
+
+        // Append all messages at once
+        ui.messagesContainer.appendChild(fragment);
+
+        // Scroll to bottom immediately after rendering
+        requestAnimationFrame(() => {
+            scrollToBottom();
+        });
+    }
+
+    function renderAllServerMessages(messages, userMap) {
+        ui.messagesContainer.innerHTML = '';
+
+        if (messages.length === 0) return;
+
+        // Create document fragment for better performance
+        const fragment = document.createDocumentFragment();
+
+        messages.forEach(msg => {
+            const messageDiv = createServerMessageElement(msg, userMap[msg.user_id] || 'Unknown');
+            fragment.appendChild(messageDiv);
+        });
+
+        // Append all messages at once
+        ui.messagesContainer.appendChild(fragment);
+
+        // Scroll to bottom immediately after rendering
+        requestAnimationFrame(() => {
+            scrollToBottom();
+        });
+    }
+
+    function createMessageElement(message, sender) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${message.sender_id === currentUser.id ? 'sent' : 'received'}`;
+        messageDiv.dataset.messageId = message.id;
+
+        const isMobile = window.innerWidth <= 768;
+        const isSent = message.sender_id === currentUser.id;
+
+        let content = '';
+
+        if (message.reply_to_id) {
+            const replyText = message.reply_to_content || 'Original message';
+            content += `<div class="message-reply-context" style="background: rgba(88, 101, 242, 0.1); padding: 0.5rem; border-left: 3px solid var(--primary-accent); margin-bottom: 0.5rem; border-radius: 4px; font-size: 0.85rem;"><i class="fa-solid fa-reply"></i> ${escapeHtml(replyText.substring(0, 50))}${replyText.length > 50 ? '...' : ''}</div>`;
         }
 
-        if (userSettings.readReceipts) {
-            await supabase.from('messages')
-                .update({ read: true })
-                .eq('receiver_id', currentUser.id)
-                .eq('sender_id', friendId);
+        if (message.file_url) {
+            const fileType = message.file_type || 'file';
+            if (fileType.startsWith('image/')) {
+                content += `<img src="${message.file_url}" alt="Image" class="message-image" onclick="window.open('${message.file_url}', '_blank')" style="max-width: 300px; border-radius: var(--button-border-radius); cursor: pointer; display: block;">`;
+            } else if (fileType.startsWith('audio/')) {
+                content += `<audio controls src="${message.file_url}" class="message-audio" style="max-width: 100%;"></audio>`;
+            } else {
+                content += `<a href="${message.file_url}" target="_blank" class="message-file" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: var(--tertiary-bg); border-radius: var(--button-border-radius); text-decoration: none; color: var(--primary-text);"><i class="fa-solid fa-file"></i> ${message.file_name || 'File'}</a>`;
+            }
         }
 
-        scrollToBottom();
+        if (message.content) {
+            content += `<div class="message-content">${escapeHtml(message.content)}${message.edited ? '<span class="message-edited" style="font-size: 0.75rem; color: var(--secondary-text); margin-left: 0.5rem;">(edited)</span>' : ''}</div>`;
+        }
+
+        if (message.call_duration !== null && message.call_duration !== undefined) {
+            const caller = message.sender_id === currentUser.id ? 'You' : sender.username;
+            const duration = formatCallDuration(message.call_duration);
+            content = `<div class="message-call-info" style="display: flex; align-items: center; gap: 0.5rem;"><i class="fa-solid fa-phone"></i> ${caller} called at ${duration}</div>`;
+        }
+
+        content += `<div class="message-reactions" data-message-id="${message.id}" style="display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.25rem;"></div>`;
+
+        const timestamp = new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        if (isMobile) {
+            const timestampDiv = document.createElement('div');
+            timestampDiv.className = 'message-timestamp-reveal';
+            timestampDiv.textContent = timestamp;
+            timestampDiv.style.cssText = `
+            position: absolute;
+            bottom: 0.25rem;
+            font-size: 0.75rem;
+            color: var(--secondary-text);
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            pointer-events: none;
+            ${isSent ? 'right: 0.5rem;' : 'left: 0.5rem;'}
+        `;
+
+            const contentWrapper = document.createElement('div');
+            contentWrapper.innerHTML = content;
+            contentWrapper.style.cssText = 'position: relative;';
+
+            messageDiv.appendChild(contentWrapper);
+            messageDiv.appendChild(timestampDiv);
+
+            setupMessageSwipe(contentWrapper, isSent);
+        } else {
+            const contentWrapper = document.createElement('div');
+            contentWrapper.innerHTML = content;
+            messageDiv.appendChild(contentWrapper);
+
+            const timestampDiv = document.createElement('div');
+            timestampDiv.className = 'message-timestamp';
+            timestampDiv.textContent = timestamp;
+            timestampDiv.style.cssText = `
+            font-size: 0.7rem;
+            color: var(--secondary-text);
+            margin-top: 0.25rem;
+            text-align: ${isSent ? 'right' : 'left'};
+        `;
+            messageDiv.appendChild(timestampDiv);
+        }
+
+        if (message.sender_id === currentUser.id) {
+            messageDiv.addEventListener('contextmenu', (e) => showMessageContextMenu(e, message));
+            messageDiv.addEventListener('click', (e) => {
+                if (e.target.closest('.message-content') && !e.target.closest('.message-reaction')) {
+                    showMessageContextMenu(e, message);
+                }
+            });
+        }
+
+        messageDiv.addEventListener('click', (e) => {
+            if (e.target.classList.contains('message-reaction')) {
+                toggleReaction(message.id, e.target.dataset.emoji);
+            }
+        });
+
+        if (message.reactions) {
+            renderReactions(message.id, message.reactions);
+        }
+
+        return messageDiv;
+    }
+
+    function createServerMessageElement(msg, username) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${msg.user_id === currentUser.id ? 'sent' : 'received'}`;
+        messageDiv.setAttribute('data-message-id', msg.id);
+
+        messageDiv.innerHTML = `
+        ${msg.user_id !== currentUser.id ? `<strong>${username}</strong><br>` : ''}
+        <div class="message-content">${msg.content}</div>
+        <span class="message-time">${new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+    `;
+
+        return messageDiv;
+    }
+
+    const loadMessages = async (friendId) => {
+        // Show skeleton loaders
+        showSkeletonMessages();
+
+        try {
+            const { data: messages } = await supabase
+                .from('messages')
+                .select('*')
+                .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${currentUser.id})`)
+                .order('created_at', { ascending: true });
+
+            // Render all messages at once
+            renderAllMessages(messages || []);
+
+            if (userSettings.readReceipts) {
+                await supabase.from('messages')
+                    .update({ read: true })
+                    .eq('receiver_id', currentUser.id)
+                    .eq('sender_id', friendId);
+            }
+
+            scrollToBottom();
+        } catch (error) {
+            console.error('Error loading messages:', error);
+            // Clear skeletons on error
+            ui.messagesContainer.innerHTML = '';
+        }
     };
 
     const displayMessage = (message, sender) => {
@@ -1754,6 +2551,28 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     ui.messageForm.onsubmit = async (e) => {
+        if (currentServer) {
+            e.preventDefault();
+            const content = ui.messageInput.value.trim();
+            if (!content) return;
+
+            try {
+                const { data, error } = await supabaseClient.from('server_messages').insert({
+                    server_id: currentServer.id,
+                    user_id: currentUser.id,
+                    content,
+                    created_at: new Date().toISOString()
+                }).select().single();
+
+                if (error) throw error;
+
+                displayServerMessage({ ...data, username: currentUser.username });
+                ui.messageInput.value = '';
+            } catch (error) {
+                console.error('Error sending server message:', error);
+            }
+            return;
+        }
         e.preventDefault();
 
         const content = ui.messageInput.value.trim();
@@ -1762,6 +2581,27 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        ui.backToFriendsBtn?.addEventListener('click', () => {
+            if (window.innerWidth <= 768) {
+                ui.sidebar.classList.add('open');
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            if (window.innerWidth <= 768 && ui.sidebar.classList.contains('open')) {
+                if (!ui.sidebar.contains(e.target) && !ui.bottomNavbar.contains(e.target)) {
+                    ui.sidebar.classList.remove('open');
+                }
+            }
+        });
+
+        document.querySelectorAll('.navbar-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (window.innerWidth <= 768) {
+                    ui.sidebar.classList.add('open');
+                }
+            });
+        });
 
         const messageData = {
             content,
@@ -2022,10 +2862,14 @@ document.addEventListener('DOMContentLoaded', () => {
         updateURLPath('messages');
         ui.sidebar.classList.remove('hidden');
         ui.chatContainer.classList.remove('active');
+
+        if (window.innerWidth <= 768) {
+            ui.navbarInSidebar.classList.remove('hidden');
+        }
     };
 
     ui.viewProfileBtn.onclick = async () => {
-        if (currentChatType === 'friend') {
+        if (currentChatType === 'friend' && currentChatFriend) {
             ui.profileUsername.textContent = currentChatFriend.username;
             ui.profileUsernameValue.textContent = currentChatFriend.username;
             ui.profileAvatar.textContent = currentChatFriend.username[0].toUpperCase();
@@ -2043,23 +2887,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             hideModal();
             showModal(ui.friendProfileModal);
-        }
-    };
-
-    ui.blockUserBtn.onclick = async () => {
-        if (currentChatType === 'friend') {
-            showConfirmationModal(`Block ${currentChatFriend.username}?`, 'This user will be blocked and you will not receive messages from them.', async () => {
-                await supabase.from('blocked_users').insert([{
-                    user_id: currentUser.id,
-                    blocked_user_id: currentChatFriend.id
-                }]);
-
-                await loadBlockedUsers();
-                hideModal();
-                ui.chatView.classList.add('hidden');
-                ui.welcomeScreen.classList.remove('hidden');
-                await updateConversationsList();
-            });
+        } else if (currentChatType === 'server' && currentServer) {
+            ui.serverInfoBtn.click();
         }
     };
 
@@ -2079,7 +2908,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     showInfoModal('Error', 'Failed to block user.');
                     return;
                 }
-
 
                 await loadBlockedUsers();
                 hideModal();
@@ -2584,6 +3412,25 @@ document.addEventListener('DOMContentLoaded', () => {
             outgoingOverlay.remove();
         }
     };
+
+    async function detectUserTable() {
+        const tables = ['users', 'profiles', 'auth_users'];
+        for (const table of tables) {
+            try {
+                const { data, error } = await supabaseClient
+                    .from(table)
+                    .select('username')
+                    .limit(1);
+
+                if (!error) {
+                    return table;
+                }
+            } catch (e) {
+                continue;
+            }
+        }
+        return 'profiles';
+    }
 
     const startCall = async () => {
         if (!currentChatFriend || currentChatType !== 'friend') {
