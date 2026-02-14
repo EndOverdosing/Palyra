@@ -191,6 +191,8 @@ document.addEventListener('DOMContentLoaded', () => {
         closeAllModals();
         ui.infoTitle.textContent = title;
         ui.infoMessage.textContent = message;
+        ui.infoModal.style.zIndex = '10003';
+        ui.modalContainer.style.zIndex = '10002';
         ui.infoModal.classList.remove('hidden');
         ui.modalContainer.classList.remove('hidden');
     }
@@ -2690,14 +2692,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const showConfirmationModal = (title, message, onConfirm) => {
         ui.confirmationTitle.textContent = title;
         ui.confirmationMessage.textContent = message;
+        ui.confirmationModal.style.zIndex = '10003';
+        ui.modalContainer.style.zIndex = '10002';
         showModal(ui.confirmationModal);
 
         ui.confirmBtn.onclick = async () => {
             await onConfirm();
+            ui.confirmationModal.style.zIndex = '';
+            ui.modalContainer.style.zIndex = '';
             hideModal();
         };
 
         ui.cancelBtn.onclick = () => {
+            ui.confirmationModal.style.zIndex = '';
+            ui.modalContainer.style.zIndex = '';
             hideModal();
         };
     };
@@ -2705,9 +2713,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const showInfoModal = (title, message) => {
         ui.infoTitle.textContent = title;
         ui.infoMessage.textContent = message;
+        ui.infoModal.style.zIndex = '10003';
+        ui.modalContainer.style.zIndex = '10002';
         showModal(ui.infoModal);
 
         ui.infoOkBtn.onclick = () => {
+            ui.infoModal.style.zIndex = '';
+            ui.modalContainer.style.zIndex = '';
             hideModal();
         };
     };
@@ -3436,23 +3448,72 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const maxSize = 5 * 1024 * 1024;
+        const maxSize = 25 * 1024 * 1024;
         if (file.size > maxSize) {
-            showInfoModal('File too large', 'Please upload an image smaller than 5MB.');
+            showInfoModal('File too large', 'Please upload an image smaller than 25MB.');
             e.target.value = '';
             return;
         }
 
         try {
-            const fileExt = file.name.split('.').pop();
-            const fileName = `${currentUser.id}-avatar.${fileExt}`;
+            const compressedFile = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 800;
+                        const MAX_HEIGHT = 800;
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > height) {
+                            if (width > MAX_WIDTH) {
+                                height *= MAX_WIDTH / width;
+                                width = MAX_WIDTH;
+                            }
+                        } else {
+                            if (height > MAX_HEIGHT) {
+                                width *= MAX_HEIGHT / height;
+                                height = MAX_HEIGHT;
+                            }
+                        }
+
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+
+                        canvas.toBlob((blob) => {
+                            if (blob) {
+                                resolve(new File([blob], file.name, { type: 'image/jpeg' }));
+                            } else {
+                                reject(new Error('Image compression failed'));
+                            }
+                        }, 'image/jpeg', 0.85);
+                    };
+                    img.onerror = () => reject(new Error('Failed to load image'));
+                    img.src = event.target.result;
+                };
+                reader.onerror = () => reject(new Error('Failed to read file'));
+                reader.readAsDataURL(file);
+            });
+
+            const fileExt = 'jpg';
+            const fileName = `${currentUser.id}-avatar-${Date.now()}.${fileExt}`;
             const filePath = `avatars/${fileName}`;
 
             const { error: uploadError } = await supabase.storage
                 .from('avatars')
-                .upload(filePath, file, { upsert: true });
+                .upload(filePath, compressedFile, {
+                    upsert: true,
+                    contentType: 'image/jpeg'
+                });
 
-            if (uploadError) throw uploadError;
+            if (uploadError) {
+                console.error('Upload error:', uploadError);
+                throw new Error(`Upload failed: ${uploadError.message}`);
+            }
 
             const { data: { publicUrl } } = supabase.storage
                 .from('avatars')
@@ -3463,7 +3524,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 .update({ avatar_url: publicUrl })
                 .eq('id', currentUser.id);
 
-            if (updateError) throw updateError;
+            if (updateError) {
+                console.error('Profile update error:', updateError);
+                throw new Error(`Profile update failed: ${updateError.message}`);
+            }
 
             currentUser.avatar_url = publicUrl;
             ui.settingsAvatar.innerHTML = `<img src="${publicUrl}" alt="${currentUser.username}">`;
@@ -3489,9 +3553,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
 
+            showInfoModal('Success', 'Profile picture updated successfully!');
+
         } catch (error) {
             console.error('Avatar upload error:', error);
-            showInfoModal('Upload failed', 'Could not upload avatar. Please try again.');
+            showInfoModal('Upload failed', error.message || 'Could not upload avatar. Please try again.');
             e.target.value = '';
         }
     };
