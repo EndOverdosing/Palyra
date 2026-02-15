@@ -1478,7 +1478,7 @@ select option {
     content: '';
     position: fixed;
     inset: 0 0 auto 0;
-    height: calc(200px + env(safe-area-inset-top, 0));
+    height: 140px;
     background: linear-gradient(to bottom,
             color-mix(in srgb, var(--primary-text) 47.5%, transparent) 0%,
             color-mix(in srgb, var(--primary-text) 42.5%, transparent) 30%,
