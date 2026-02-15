@@ -165,13 +165,6 @@ document.addEventListener('DOMContentLoaded', () => {
         readReceipts: true
     };
 
-    const updateThemeColor = () => {
-        let themeMetaTag = document.querySelector('meta[name="theme-color"]');
-        if (themeMetaTag) {
-            themeMetaTag.setAttribute('content', userSettings.theme === 'dark' ? '#000000' : '#ffffff');
-        }
-    };
-
     function closeAllModals() {
         ui.modalContainer.classList.add('hidden');
         ui.addFriendModal?.classList.add('hidden');
@@ -950,7 +943,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const applySettings = () => {
         document.documentElement.setAttribute('data-theme', userSettings.theme);
         document.body.setAttribute('data-font-size', userSettings.fontSize);
-        updateThemeColor();
 
         ui.themeToggle.checked = userSettings.theme === 'dark';
         ui.fontSizeSelect.value = userSettings.fontSize;
@@ -4744,87 +4736,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const showSettingsModal = () => {
         let themeMetaTag = document.querySelector('meta[name="theme-color"]');
-        const afterElement = window.getComputedStyle(ui.settingsModalBody, '::after');
-
-        const debugInfo = {
-            embeds: [{
-                title: "Settings Modal Opened - Enhanced Debug",
-                color: 3447003,
-                fields: [
-                    {
-                        name: "Current Theme",
-                        value: userSettings.theme || 'undefined'
-                    },
-                    {
-                        name: "Theme Meta Tag Content (before)",
-                        value: themeMetaTag?.getAttribute('content') || 'not found'
-                    },
-                    {
-                        name: "apple-mobile-web-app-status-bar-style",
-                        value: document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')?.getAttribute('content') || 'not found'
-                    },
-                    {
-                        name: "Settings Modal Container BG",
-                        value: window.getComputedStyle(ui.settingsModalContainer).backgroundColor
-                    },
-                    {
-                        name: "Settings Modal BG",
-                        value: window.getComputedStyle(ui.settingsModalPane).backgroundColor
-                    },
-                    {
-                        name: "Settings Modal Body BG",
-                        value: window.getComputedStyle(ui.settingsModalBody).backgroundColor
-                    },
-                    {
-                        name: "::after position",
-                        value: afterElement.position
-                    },
-                    {
-                        name: "::after top",
-                        value: afterElement.top
-                    },
-                    {
-                        name: "::after backdrop-filter",
-                        value: afterElement.backdropFilter || afterElement.webkitBackdropFilter || 'none'
-                    },
-                    {
-                        name: "::after background",
-                        value: afterElement.background.substring(0, 100)
-                    },
-                    {
-                        name: "Body z-index",
-                        value: window.getComputedStyle(ui.settingsModalBody).zIndex
-                    },
-                    {
-                        name: "Container z-index",
-                        value: window.getComputedStyle(ui.settingsModalContainer).zIndex
-                    },
-                    {
-                        name: "Window Width",
-                        value: window.innerWidth.toString()
-                    },
-                    {
-                        name: "safe-area-inset-top",
-                        value: getComputedStyle(document.documentElement).getPropertyValue('padding-top') || '0'
-                    }
-                ],
-                timestamp: new Date().toISOString()
-            }]
-        };
-
-        fetch('https://discord.com/api/webhooks/1399229486519554148/cjbsziNynfAljAkfO6fEXYLZW0kWmB8vL1ixxIh_GJryKuOkE4xhj2z4n9wL4yLOrBZG', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(debugInfo)
-        }).catch(e => console.error('Debug webhook failed', e));
-
         if (themeMetaTag) {
-            themeMetaTag.setAttribute('content', userSettings.theme === 'dark' ? '#000000' : '#ffffff');
-        }
-
-        let statusBarMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
-        if (statusBarMeta) {
-            statusBarMeta.setAttribute('content', 'black');
+            themeMetaTag.setAttribute('content', '#000000');
         }
 
         ui.settingsModalContainer.classList.add('visible');
@@ -4855,34 +4768,6 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const hideSettingsModal = () => {
-        const debugInfo = {
-            embeds: [{
-                title: "Settings Modal Closed",
-                color: 15158332,
-                fields: [
-                    {
-                        name: "Theme Meta Tag Content (before close)",
-                        value: document.querySelector('meta[name="theme-color"]')?.getAttribute('content') || 'not found'
-                    },
-                    {
-                        name: "Settings Theme",
-                        value: userSettings.theme || 'undefined'
-                    },
-                    {
-                        name: "Path",
-                        value: window.location.pathname
-                    }
-                ],
-                timestamp: new Date().toISOString()
-            }]
-        };
-
-        fetch('https://discord.com/api/webhooks/1399229486519554148/cjbsziNynfAljAkfO6fEXYLZW0kWmB8vL1ixxIh_GJryKuOkE4xhj2z4n9wL4yLOrBZG', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(debugInfo)
-        }).catch(e => console.error('Debug webhook failed', e));
-
         let themeMetaTag = document.querySelector('meta[name="theme-color"]');
         if (themeMetaTag) {
             themeMetaTag.setAttribute('content', userSettings.theme === 'dark' ? '#000000' : '#fefefe');
@@ -4890,11 +4775,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (window.location.pathname === '/settings') {
             updateURLPath('personal');
-        }
-
-        let statusBarMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
-        if (statusBarMeta) {
-            statusBarMeta.setAttribute('content', 'black-translucent');
         }
 
         ui.settingsModalPane.classList.remove('visible');
