@@ -4737,7 +4737,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const showSettingsModal = () => {
         let themeMetaTag = document.querySelector('meta[name="theme-color"]');
         if (themeMetaTag) {
-            themeMetaTag.setAttribute('content', '#000000');
+            themeMetaTag.setAttribute('content', 'transparent');
         }
 
         ui.settingsModalContainer.classList.add('visible');
