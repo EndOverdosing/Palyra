@@ -939,7 +939,7 @@ button.secondary:hover {
 .message-reply {
     padding: 0.5rem 0.75rem;
     border-radius: var(--card-border-radius);
-    background-color: rgba(0, 0, 0, 0.2);
+    background-color: var(--secondary-bg);
     font-size: 0.85rem;
     color: var(--secondary-text);
     border-left: 3px solid var(--primary-accent);
@@ -1003,15 +1003,11 @@ button.secondary:hover {
     align-items: center;
     gap: 0.75rem;
     padding: 0.75rem;
-    background-color: rgba(0, 0, 0, 0.2);
+    background-color: var(--secondary-bg);
     border-radius: var(--card-border-radius);
     margin-top: 0.25rem;
     cursor: pointer;
     transition: var(--transition-fast);
-}
-
-.message-file:hover {
-    background-color: rgba(0, 0, 0, 0.3);
 }
 
 .message-file i {
@@ -1154,7 +1150,7 @@ button.secondary:hover {
 }
 
 #cancel-reply-btn:hover {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: var(--tertiary-bg);
     transform: none;
 }
 
@@ -1859,7 +1855,7 @@ select option {
 }
 
 .member-checkbox i {
-    color: white;
+    color: var(--primary-text);
     font-size: 0.8rem;
     opacity: 0;
     transition: var(--transition-fast);
@@ -2416,7 +2412,7 @@ body[data-font-size="large"] {
 }
 
 .member-checkbox i {
-    color: white;
+    color: var(--primary-text);
     font-size: 0.7rem;
     opacity: 0;
     transition: var(--transition-fast);
@@ -3252,7 +3248,7 @@ body[data-font-size="large"] {
     font-size: 12px;
     font-weight: 500;
     background: var(--error);
-    color: white;
+    color: var(--primary-text);
     border: none;
     border-radius: var(--button-border-radius);
     cursor: pointer;
@@ -3274,7 +3270,7 @@ body[data-font-size="large"] {
     width: 100%;
     padding: 12px;
     background: var(--error);
-    color: white;
+    color: var(--primary-text);
     border: none;
     border-radius: var(--button-border-radius);
     font-weight: 600;
@@ -3347,7 +3343,7 @@ body[data-font-size="large"] {
     padding: 4px 8px;
     font-size: 11px;
     background: var(--error);
-    color: white;
+    color: var(--primary-text);
     border: none;
     border-radius: var(--button-border-radius);
     cursor: pointer;

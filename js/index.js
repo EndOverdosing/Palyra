@@ -104,7 +104,6 @@ document.addEventListener('DOMContentLoaded', () => {
         replyPreview: document.getElementById('reply-preview'),
         replyPreviewText: document.querySelector('.reply-preview-text'),
         cancelReplyBtn: document.getElementById('cancel-reply-btn'),
-        editMessageModal: document.getElementById('edit-message-modal'),
         editMessageForm: document.getElementById('edit-message-form'),
         editMessageInput: document.getElementById('edit-message-input'),
         fileInput: document.getElementById('file-input'),
@@ -444,6 +443,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let serverMessagesSubscription = null;
 
     function subscribeToServerMessages(serverId) {
+        console.log('Subscribing to server messages for server:', serverId);
 
         unsubscribeFromServerMessages();
 
@@ -456,27 +456,52 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             })
             .on('postgres_changes', {
-                event: '*',
+                event: 'INSERT',
                 schema: 'public',
                 table: 'server_messages',
                 filter: `server_id=eq.${serverId}`
             }, async (payload) => {
+                console.log('Server message INSERT event:', payload);
 
-                if (payload.eventType === 'INSERT') {
+                const { data: userData } = await supabaseClient
+                    .from(currentUser.table_name || 'profiles')
+                    .select('username, avatar_url')
+                    .eq('id', payload.new.user_id)
+                    .single();
 
-                    const { data: userData } = await supabaseClient
-                        .from(currentUser.table_name || 'profiles')
-                        .select('username')
-                        .eq('id', payload.new.user_id)
-                        .single();
+                displayServerMessage({ ...payload.new, username: userData?.username, avatar_url: userData?.avatar_url });
+            })
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'server_messages',
+                filter: `server_id=eq.${serverId}`
+            }, (payload) => {
+                console.log('Server message UPDATE event:', payload);
 
-                    displayServerMessage({ ...payload.new, username: userData?.username });
+                const msgElement = document.querySelector(`[data-message-id="${payload.new.id}"]`);
+                if (msgElement) {
+                    const contentElement = msgElement.querySelector('.message-content');
+                    if (contentElement) {
+                        contentElement.innerHTML = `${escapeHtml(payload.new.content)}<span class="message-edited" style="font-size: 0.75rem; color: var(--secondary-text); margin-left: 0.5rem;">(edited)</span>`;
+                    }
                 }
+            })
+            .on('postgres_changes', {
+                event: 'DELETE',
+                schema: 'public',
+                table: 'server_messages',
+                filter: `server_id=eq.${serverId}`
+            }, (payload) => {
+                console.log('Server message DELETE event:', payload);
+                removeMessageFromUI(payload.old.id);
             })
             .subscribe((status, err) => {
                 if (err) {
+                    console.error('Server messages subscription error:', err);
                 }
                 if (status === 'SUBSCRIBED') {
+                    console.log('Successfully subscribed to server messages');
                 }
             });
     }
@@ -1059,6 +1084,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (error || !profile) {
                 return false;
+            }
+
+            if (!profile.avatar_url) {
+                const defaultAvatars = [
+                    '/images/avatar-image.png',
+                    '/images/avatar-image-2.png',
+                    '/images/avatar-image-3.png',
+                    '/images/avatar-image-4.png',
+                    '/images/avatar-image-5.png',
+                    '/images/avatar-image-6.png'
+                ];
+                const randomAvatar = defaultAvatars[Math.floor(Math.random() * defaultAvatars.length)];
+
+                await supabase
+                    .from('profiles')
+                    .update({ avatar_url: randomAvatar })
+                    .eq('id', userId);
+
+                profile.avatar_url = randomAvatar;
             }
 
             currentUser = profile;
@@ -2617,22 +2661,141 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.editServerMessage = (messageId, content) => {
-        editingMessage = { id: messageId, type: 'server' };
-        ui.editMessageInput.value = content;
-        showModal(ui.editMessageModal);
-    };
+        const msgElement = document.querySelector(`[data-message-id="${messageId}"]`);
+        if (!msgElement) return;
 
-    window.deleteServerMessage = async (messageId) => {
-        showConfirmationModal('Delete this message?', 'This action cannot be undone.', async () => {
-            const { error } = await supabaseClient.from('server_messages').delete().eq('id', messageId);
+        const contentElement = msgElement.querySelector('.message-content');
+        if (!contentElement) return;
 
-            if (error) {
-                showInfoModal('Error', 'Failed to delete message.');
+        const originalText = content;
+        // Check if it was already edited to preserve the tag if we cancel
+        const wasEdited = contentElement.querySelector('.message-edited') !== null;
+
+        const textarea = document.createElement('textarea');
+        textarea.className = 'inline-edit-textarea';
+        textarea.value = originalText;
+        textarea.style.cssText = `
+            width: 100%;
+            min-height: 60px;
+            padding: 0.5rem;
+            border: 1px solid var(--primary-accent);
+            border-radius: var(--button-border-radius);
+            background: var(--tertiary-bg);
+            color: var(--primary-text);
+            font-family: inherit;
+            font-size: inherit;
+            resize: vertical;
+        `;
+
+        const buttonContainer = document.createElement('div');
+        buttonContainer.style.cssText = 'display: flex; gap: 0.5rem; margin-top: 0.5rem;';
+
+        const saveBtn = document.createElement('button');
+        saveBtn.textContent = 'Save';
+        saveBtn.style.cssText = 'padding: 0.5rem 1rem; background: var(--primary-accent); color: white; border: none; border-radius: var(--button-border-radius); cursor: pointer;';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.style.cssText = 'padding: 0.5rem 1rem; background: var(--secondary-bg); color: var(--primary-text); border: none; border-radius: var(--button-border-radius); cursor: pointer;';
+
+        buttonContainer.appendChild(saveBtn);
+        buttonContainer.appendChild(cancelBtn);
+
+        const editContainer = document.createElement('div');
+        editContainer.appendChild(textarea);
+        editContainer.appendChild(buttonContainer);
+
+        contentElement.innerHTML = '';
+        contentElement.appendChild(editContainer);
+
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+        const cancelEdit = () => {
+            contentElement.innerHTML = escapeHtml(originalText);
+            if (wasEdited) {
+                contentElement.insertAdjacentHTML('beforeend', '<span class="message-edited" style="font-size: 0.75rem; color: var(--secondary-text); margin-left: 0.5rem;">(edited)</span>');
+            }
+        };
+
+        const saveEdit = async () => {
+            const newContent = textarea.value.trim();
+            if (!newContent || newContent === originalText) {
+                cancelEdit();
                 return;
             }
 
-            removeMessageFromUI(messageId);
-        });
+            // 1. Optimistic Update (Update UI immediately)
+            contentElement.innerHTML = `${escapeHtml(newContent)}<span class="message-edited" style="font-size: 0.75rem; color: var(--secondary-text); margin-left: 0.5rem;">(edited)</span>`;
+
+            // 2. Database Update
+            try {
+                const { error } = await window.supabase
+                    .from('server_messages')
+                    .update({
+                        content: newContent,
+                        edited: true
+                    })
+                    .eq('id', messageId)
+                    .eq('user_id', currentUser.id); // Extra safety check
+
+                if (error) {
+                    console.error('Edit failed:', error);
+                    showInfo('Error', 'Failed to save edit: ' + error.message);
+                    cancelEdit(); // Revert on error
+                }
+            } catch (error) {
+                console.error('Edit error:', error);
+                cancelEdit();
+            }
+        };
+
+        saveBtn.onclick = saveEdit;
+        cancelBtn.onclick = cancelEdit;
+
+        textarea.onkeydown = (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                saveEdit();
+            } else if (e.key === 'Escape') {
+                cancelEdit();
+            }
+        };
+    };
+
+    window.deleteServerMessage = async (messageId) => {
+        showConfirmation(
+            'Delete Message',
+            'Are you sure you want to delete this message? This cannot be undone.',
+            async () => {
+                try {
+                    removeMessageFromUI(messageId);
+
+                    const { data, error } = await window.supabase
+                        .from('server_messages')
+                        .delete()
+                        .eq('id', messageId)
+                        .select();
+
+                    if (error) {
+                        console.error('Delete failed:', error);
+                        showInfo('Error', 'Failed to delete message: ' + error.message);
+                        if (currentServer) loadServerMessages(currentServer.id);
+                        return;
+                    }
+
+                    if (data && data.length === 0) {
+                        console.warn('Delete returned 0 rows. RLS policy might be blocking this.');
+                        showInfo('Error', 'Could not delete message. You might not have permission.');
+                        if (currentServer) loadServerMessages(currentServer.id);
+                    }
+
+                } catch (error) {
+                    console.error('Delete error:', error);
+                    showInfo('Error', 'An error occurred while deleting');
+                }
+            }
+        );
     };
 
     const showMessageContextMenu = (e, message) => {
@@ -2869,97 +3032,194 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.editMessage = (messageId, content) => {
-        editingMessage = { id: messageId, type: 'message' };
-        ui.editMessageInput.value = content;
-        showModal(ui.editMessageModal);
-    };
+        console.log('Edit message called for:', messageId, 'Content:', content);
 
-    ui.editMessageForm.onsubmit = async (e) => {
-        e.preventDefault();
-        const newContent = ui.editMessageInput.value.trim();
-        if (!newContent || !editingMessage) return;
+        const msgElement = document.querySelector(`[data-message-id="${messageId}"]`);
+        if (!msgElement) {
+            console.error('Message element not found');
+            return;
+        }
 
-        if (editingMessage.type === 'server') {
-            const { error } = await supabaseClient.from('server_messages').update({
-                content: newContent,
-                edited: true
-            }).eq('id', editingMessage.id);
+        const contentElement = msgElement.querySelector('.message-content');
+        if (!contentElement) {
+            console.error('Content element not found');
+            return;
+        }
 
-            if (error) {
-                showInfoModal('Error', 'Failed to edit message.');
+        const originalText = content;
+
+        const textarea = document.createElement('textarea');
+        textarea.className = 'inline-edit-textarea';
+        textarea.value = originalText;
+        textarea.style.cssText = `
+        width: 100%;
+        min-height: 60px;
+        padding: 0.5rem;
+        border: 1px solid var(--primary-accent);
+        border-radius: var(--button-border-radius);
+        background: var(--tertiary-bg);
+        color: var(--primary-text);
+        font-family: inherit;
+        font-size: inherit;
+        resize: vertical;
+    `;
+
+        const buttonContainer = document.createElement('div');
+        buttonContainer.style.cssText = `
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+    `;
+
+        const saveBtn = document.createElement('button');
+        saveBtn.textContent = 'Save';
+        saveBtn.style.cssText = `
+        padding: 0.5rem 1rem;
+        background: var(--primary-accent);
+        color: white;
+        border: none;
+        border-radius: var(--button-border-radius);
+        cursor: pointer;
+    `;
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.style.cssText = `
+        padding: 0.5rem 1rem;
+        background: var(--secondary-bg);
+        color: var(--primary-text);
+        border: none;
+        border-radius: var(--button-border-radius);
+        cursor: pointer;
+    `;
+
+        buttonContainer.appendChild(saveBtn);
+        buttonContainer.appendChild(cancelBtn);
+
+        const editContainer = document.createElement('div');
+        editContainer.appendChild(textarea);
+        editContainer.appendChild(buttonContainer);
+
+        contentElement.innerHTML = '';
+        contentElement.appendChild(editContainer);
+
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+        const saveEdit = async () => {
+            const newContent = textarea.value.trim();
+            console.log('Saving edit - New content:', newContent);
+
+            if (!newContent) {
+                console.log('Empty content, canceling');
+                cancelEdit();
                 return;
             }
 
-            updateMessageInUI({ id: editingMessage.id, content: newContent, edited: true });
-            editingMessage = null;
-            hideModal();
-            return;
-        }
-
-        const { data: message } = await supabase
-            .from('messages')
-            .select('sender_id, receiver_id')
-            .eq('id', editingMessage.id)
-            .single();
-
-        const { error } = await supabase.from('messages').update({
-            content: newContent,
-            edited: true
-        }).eq('id', editingMessage.id);
-
-        if (error) {
-            showInfoModal('Error', 'Failed to edit message.');
-            return;
-        }
-
-        updateMessageInUI({ id: editingMessage.id, content: newContent, edited: true });
-
-        if (message) {
-            const otherUserId = message.sender_id === currentUser.id ? message.receiver_id : message.sender_id;
-
-            const channel = supabase.channel(`realtime-messages-${otherUserId}`, {
-                config: { broadcast: { self: false } }
-            });
-
-            await new Promise((resolve) => {
-                channel.subscribe((status) => {
-                    if (status === 'SUBSCRIBED') resolve();
-                });
-            });
-
-            await channel.send({
-                type: 'broadcast',
-                event: 'message_updated',
-                payload: {
-                    messageId: editingMessage.id,
-                    content: newContent
-                }
-            });
-
-            supabase.removeChannel(channel);
-        }
-
-        editingMessage = null;
-        hideModal();
-    };
-
-    window.deleteMessage = async (messageId) => {
-        showConfirmationModal('Delete this message?', 'This action cannot be undone.', async () => {
-            const { data: message } = await supabase
+            const { data: message, error: fetchError } = await supabase
                 .from('messages')
                 .select('sender_id, receiver_id')
                 .eq('id', messageId)
                 .single();
 
-            if (!message) return;
+            console.log('Fetched message for edit:', message, 'Error:', fetchError);
+
+            const { error } = await supabase.from('messages').update({
+                content: newContent,
+                edited: true
+            }).eq('id', messageId);
+
+            console.log('Update result - Error:', error);
+
+            if (error) {
+                console.error('Edit failed:', error);
+                showInfoModal('Error', 'Failed to edit message.');
+                cancelEdit();
+                return;
+            }
+
+            console.log('Message updated successfully');
+            updateMessageInUI({ id: messageId, content: newContent, edited: true });
+
+            if (message) {
+                const otherUserId = message.sender_id === currentUser.id ? message.receiver_id : message.sender_id;
+
+                const channel = supabase.channel(`realtime-messages-${otherUserId}`, {
+                    config: { broadcast: { self: false } }
+                });
+
+                await new Promise((resolve) => {
+                    channel.subscribe((status) => {
+                        if (status === 'SUBSCRIBED') resolve();
+                    });
+                });
+
+                await channel.send({
+                    type: 'broadcast',
+                    event: 'message_updated',
+                    payload: {
+                        messageId: messageId,
+                        content: newContent
+                    }
+                });
+
+                supabase.removeChannel(channel);
+            }
+        };
+
+        const cancelEdit = () => {
+            console.log('Edit canceled');
+            contentElement.textContent = originalText;
+            const editedBadge = msgElement.querySelector('.message-edited');
+            if (editedBadge) {
+                contentElement.appendChild(editedBadge);
+            }
+        };
+
+        saveBtn.onclick = saveEdit;
+        cancelBtn.onclick = cancelEdit;
+
+        textarea.onkeydown = (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                saveEdit();
+            } else if (e.key === 'Escape') {
+                cancelEdit();
+            }
+        };
+    };
+
+    window.deleteMessage = async (messageId) => {
+        console.log('Delete message called for:', messageId);
+
+        showConfirmationModal('Delete this message?', 'This action cannot be undone.', async () => {
+            console.log('Delete confirmed for message:', messageId);
+
+            const { data: message, error: fetchError } = await supabase
+                .from('messages')
+                .select('sender_id, receiver_id')
+                .eq('id', messageId)
+                .single();
+
+            console.log('Message data:', message, 'Error:', fetchError);
+
+            if (!message) {
+                console.error('Message not found');
+                showInfoModal('Error', 'Message not found.');
+                return;
+            }
 
             const { error } = await supabase.from('messages').delete().eq('id', messageId);
 
+            console.log('Delete result - Error:', error);
+
             if (error) {
+                console.error('Delete failed:', error);
                 showInfoModal('Error', 'Failed to delete message.');
                 return;
             }
 
+            console.log('Message deleted successfully, removing from UI');
             removeMessageFromUI(messageId);
 
             const otherUserId = message.sender_id === currentUser.id ? message.receiver_id : message.sender_id;
@@ -5252,36 +5512,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (diffY > 0) {
                 ui.settingsModalPane.style.transform = `translateY(${diffY}px)`;
+                console.log('🔧 [Settings Modal] DRAG MOVE - Transform updated:', getComputedStyle(ui.settingsModalPane).transform);
             }
         };
 
         const dragEnd = (e) => {
             if (!isDragging || window.innerWidth > 768) return;
             isDragging = false;
+            console.log('🔧 [Settings Modal] DRAG END - Drag ended, diffY:', diffY);
             ui.settingsModalPane.style.transition = 'transform 0.3s ease-out';
 
             const currentY = e.pageY || e.changedTouches[0].pageY;
             const diffY = currentY - startY;
 
             if (diffY > 100) {
-                ui.settingsModalContainer.classList.add('hiding');
+                console.log('🔧 [Settings Modal] DRAG END - Threshold exceeded, closing modal');
                 ui.settingsModalPane.style.transform = 'translateY(100%)';
                 setTimeout(() => {
-                    ui.settingsModalContainer.classList.remove('visible', 'hiding');
+                    console.log('🔧 [Settings Modal] DRAG END - Calling hideSettingsModal()');
+                    hideSettingsModal();
                     ui.settingsModalPane.style.transform = '';
-
-                    if (ui.settingsModalBody._scrollListener) {
-                        ui.settingsModalBody.removeEventListener('scroll', ui.settingsModalBody._scrollListener);
-                        delete ui.settingsModalBody._scrollListener;
-                    }
-
-                    document.documentElement.style.setProperty('--settings-modal-after-opacity', 1);
-
-                    if (window.location.pathname === '/settings') {
-                        updateURLPath('personal');
-                    }
+                    console.log('🔧 [Settings Modal] DRAG END - Transform cleared');
                 }, 300);
             } else {
+                console.log('🔧 [Settings Modal] DRAG END - Threshold not exceeded, snapping back');
                 ui.settingsModalPane.style.transform = 'translateY(0)';
             }
         };
@@ -5328,11 +5582,22 @@ document.addEventListener('DOMContentLoaded', () => {
     setupSettingsDrag();
 
     const showSettingsModal = () => {
+        console.log('🔧 [Settings Modal] SHOW - Starting show animation');
+        console.log('🔧 [Settings Modal] SHOW - Container classes before:', ui.settingsModalContainer.className);
+        console.log('🔧 [Settings Modal] SHOW - Pane classes before:', ui.settingsModalPane.className);
+
         ui.settingsModalContainer.classList.add('visible');
+        console.log('🔧 [Settings Modal] SHOW - Container visible class added');
+
         if (window.innerWidth <= 768) {
+            console.log('🔧 [Settings Modal] SHOW - Mobile detected, adding pane visible class with delay');
             setTimeout(() => {
                 ui.settingsModalPane.classList.add('visible');
+                console.log('🔧 [Settings Modal] SHOW - Pane visible class added after delay');
+                console.log('🔧 [Settings Modal] SHOW - Pane transform:', getComputedStyle(ui.settingsModalPane).transform);
             }, 10);
+        } else {
+            console.log('🔧 [Settings Modal] SHOW - Desktop detected, no pane class needed');
         }
 
         const handleSettingsScroll = () => {
@@ -5348,6 +5613,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             document.documentElement.style.setProperty('--settings-modal-after-opacity', opacity);
+            console.log('🔧 [Settings Modal] HANDLE SETTINGS SCROLL - Opacity updated:', opacity);
         };
 
         handleSettingsScroll();
@@ -5356,27 +5622,21 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const hideSettingsModal = () => {
+        console.log('🔧 [Settings Modal] HIDE - Starting hide animation');
+        console.log('🔧 [Settings Modal] HIDE - Container classes before:', ui.settingsModalContainer.className);
+        console.log('🔧 [Settings Modal] HIDE - Pane classes before:', ui.settingsModalPane.className);
+        console.log('🔧 [Settings Modal] HIDE - Pane transform before:', getComputedStyle(ui.settingsModalPane).transform);
+
         if (window.location.pathname === '/settings') {
             updateURLPath('personal');
         }
 
-        const isAlreadyAnimating = ui.settingsModalPane.style.transform === 'translateY(100%)';
+        console.log('🔧 [Settings Modal] HIDE - Removing pane visible class');
+        ui.settingsModalPane.classList.remove('visible');
 
-        if (window.innerWidth <= 768) {
-            if (!isAlreadyAnimating) {
-                ui.settingsModalPane.style.transform = 'translateY(100%)';
-            }
-
-            setTimeout(() => {
-                ui.settingsModalContainer.classList.remove('visible');
-
-                setTimeout(() => {
-                    ui.settingsModalPane.style.transform = '';
-                }, 300);
-            }, 300);
-        } else {
-            ui.settingsModalContainer.classList.remove('visible');
-        }
+        setTimeout(() => {
+            console.log('🔧 [Settings Modal] HIDE - After 100ms - Pane transform:', getComputedStyle(ui.settingsModalPane).transform);
+        }, 100);
 
         if (ui.settingsModalBody._scrollListener) {
             ui.settingsModalBody.removeEventListener('scroll', ui.settingsModalBody._scrollListener);
@@ -5384,6 +5644,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         document.documentElement.style.setProperty('--settings-modal-after-opacity', 1);
+
+        setTimeout(() => {
+            console.log('🔧 [Settings Modal] HIDE - Removing container visible class after 300ms');
+            console.log('🔧 [Settings Modal] HIDE - Pane transform at 300ms:', getComputedStyle(ui.settingsModalPane).transform);
+            ui.settingsModalContainer.classList.remove('visible');
+        }, 300);
     };
 
     const adjustTextareaHeight = () => {
