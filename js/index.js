@@ -2513,7 +2513,7 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
             const contentWrapper = document.createElement('div');
-            contentWrapper.style.cssText = 'position: relative; display: flex; gap: 0.5rem;';
+            contentWrapper.style.cssText = 'position: relative; gap: 0.5rem;';
 
             if (!isSent) {
                 contentWrapper.innerHTML = `
@@ -3446,7 +3446,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const showNotification = (message) => {
         if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('Peer 2 Peer', { body: message });
+            new Notification('Pylara', { body: message });
         }
     };
 

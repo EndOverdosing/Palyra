@@ -1,6 +1,6 @@
-![P2P Logo](/images/background.png)
+![Logo](/images/background.png)
 
-# Peer 2 Peer Communicator
+# Pylara Communicator
 
 A secure, decentralized, and real-time communication application that facilitates direct peer-to-peer connections for video, audio, and text chat without a central server.
 
