@@ -3603,6 +3603,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     ui.settingsBtn.onclick = () => {
+        updateURLPath('settings');
         showSettingsModal();
     };
 
@@ -4741,11 +4742,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 10);
         }
 
-        // Add scroll event listener for fade-out effect
         const handleSettingsScroll = () => {
             const scrollTop = ui.settingsModalBody.scrollTop;
-            const fadeStart = 50; // Start fading after scrolling 50px
-            const fadeEnd = 200;  // Fully faded after scrolling 200px
+            const fadeStart = 50;
+            const fadeEnd = 200;
 
             let opacity = 1;
             if (scrollTop > fadeStart) {
@@ -4754,30 +4754,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 opacity = 1 - fadeProgress;
             }
 
-            // Set CSS custom property for opacity
             document.documentElement.style.setProperty('--settings-modal-after-opacity', opacity);
         };
 
-        // Initial check
         handleSettingsScroll();
 
-        // Add scroll listener
         ui.settingsModalBody.addEventListener('scroll', handleSettingsScroll);
 
-        // Store listener reference for cleanup
         ui.settingsModalBody._scrollListener = handleSettingsScroll;
     };
 
     const hideSettingsModal = () => {
+        if (window.location.pathname === '/settings') {
+            updateURLPath('personal');
+        }
+
         ui.settingsModalPane.classList.remove('visible');
 
-        // Clean up scroll event listener
         if (ui.settingsModalBody._scrollListener) {
             ui.settingsModalBody.removeEventListener('scroll', ui.settingsModalBody._scrollListener);
             delete ui.settingsModalBody._scrollListener;
         }
 
-        // Reset opacity
         document.documentElement.style.setProperty('--settings-modal-after-opacity', 1);
 
         setTimeout(() => {
@@ -4801,61 +4799,74 @@ document.addEventListener('DOMContentLoaded', () => {
 
     handleAuth();
 
-    const handleRouting = () => {
+    const handleRouting = async () => {
         const path = window.location.pathname;
         const parts = path.split('/').filter(Boolean);
+
         if (parts.length === 0) {
-            switchTab('personal');
+            await switchTab('personal');
             return;
         }
 
         const route = parts[0];
         const id = parts[1];
+
         switch (route) {
             case 'personal':
-                switchTab('personal');
+                await switchTab('personal');
                 break;
+
             case 'global':
-                switchTab('global');
+                await switchTab('global');
                 break;
+
+            case 'settings':
+                showSettingsModal();
+                break;
+
             case 'chat':
                 if (id && friends[id]) {
                     if (currentTab !== 'personal') {
-                        switchTab('personal');
+                        await switchTab('personal');
                     }
                     setTimeout(() => {
                         window.openChat(id, 'friend');
                     }, currentTab !== 'personal' ? 500 : 100);
                 } else {
-                    switchTab('personal');
+                    await switchTab('personal');
                 }
                 break;
+
             case 'server':
                 if (id) {
-                    const server = servers.find(s => s.id === id);
                     if (currentTab !== 'global') {
-                        switchTab('global');
+                        await switchTab('global');
+                        await loadServers();
                     }
                     setTimeout(async () => {
+                        const server = servers.find(s => s.id === id);
                         if (server) {
                             await openServerChat(server);
                         }
-                    }, currentTab !== 'global' ? 500 : 100);
+                    }, currentTab !== 'global' ? 800 : 100);
                 } else {
-                    switchTab('global');
+                    await switchTab('global');
                 }
                 break;
+
             case 'friend-requests':
-                switchTab('personal');
+                await switchTab('personal');
                 setTimeout(() => {
                     window.showFriendRequestsModal();
                 }, 500);
                 break;
+
             case 'messages':
-                switchTab('personal');
+                await switchTab('personal');
                 break;
+
             default:
-                switchTab('personal');
+                await switchTab('personal');
                 break;
         }
     };
