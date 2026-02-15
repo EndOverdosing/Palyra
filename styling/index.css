@@ -423,12 +423,13 @@ button:disabled:hover {
 #logout-btn {
     margin-left: 5px;
     border-radius: var(--button-border-radius-round);
-}
-
-#logout-btn:hover {
-    color: var(--error);
-    background-color: rgba(242, 63, 66, 0.1);
-    transform: none;
+    height: 40px;
+    width: 40px;
+    align-items: center;
+    justify-content: center;
+    display: flex;
+    font-size: 1rem;
+    background-color: transparent;
 }
 
 .search-input-wrapper {

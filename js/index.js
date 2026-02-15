@@ -4735,6 +4735,11 @@ document.addEventListener('DOMContentLoaded', () => {
     setupSettingsDrag();
 
     const showSettingsModal = () => {
+        let themeMetaTag = document.querySelector('meta[name="theme-color"]');
+        if (themeMetaTag) {
+            themeMetaTag.setAttribute('content', '#000000');
+        }
+
         ui.settingsModalContainer.classList.add('visible');
         if (window.innerWidth <= 768) {
             setTimeout(() => {
@@ -4758,13 +4763,16 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         handleSettingsScroll();
-
         ui.settingsModalBody.addEventListener('scroll', handleSettingsScroll);
-
         ui.settingsModalBody._scrollListener = handleSettingsScroll;
     };
 
     const hideSettingsModal = () => {
+        let themeMetaTag = document.querySelector('meta[name="theme-color"]');
+        if (themeMetaTag) {
+            themeMetaTag.setAttribute('content', userSettings.theme === 'dark' ? '#000000' : '#fefefe');
+        }
+
         if (window.location.pathname === '/settings') {
             updateURLPath('personal');
         }
