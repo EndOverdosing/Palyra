@@ -4933,38 +4933,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    const getMobileScreenShareStream = async () => {
-        try {
-            const constraints = {
-                video: {
-                    facingMode: 'environment',
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 }
-                },
-                audio: false
-            };
-
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
-            return stream;
-        } catch (error) {
-            try {
-                const fallbackConstraints = {
-                    video: {
-                        facingMode: 'user',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    },
-                    audio: false
-                };
-
-                const stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
-                return stream;
-            } catch (fallbackError) {
-                throw new Error('Camera access denied or not available');
-            }
-        }
-    };
-
     const getDesktopScreenShareStream = async () => {
         try {
             const stream = await navigator.mediaDevices.getDisplayMedia({
@@ -5011,18 +4979,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } else {
             try {
-                let screenStream;
-                let shareType;
-
-                if (isMobileDevice()) {
-                    screenStream = await getMobileScreenShareStream();
-                    shareType = 'camera';
-                    showInfoModal('Camera Share Started', 'Using camera to share content. Point your camera at what you want to share.');
-                } else {
-                    screenStream = await getDesktopScreenShareStream();
-                    shareType = 'screen';
-                    showInfoModal('Screen Share Started', 'Your screen is now being shared.');
-                }
+                const screenStream = await getDesktopScreenShareStream();
 
                 const screenTrack = screenStream.getVideoTracks()[0];
 
@@ -5041,6 +4998,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 callState.isScreenSharing = true;
                 ui.shareScreenBtn.classList.add('active');
+
+                showInfoModal('Screen Share Started', 'Your screen is now being shared.');
 
                 screenTrack.onended = async () => {
                     try {
@@ -5073,22 +5032,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 let errorMessage = 'Could not start screen sharing. Please try again.';
                 let errorTitle = 'Screen Share Error';
 
-                if (isMobileDevice()) {
-                    if (error.message.includes('Camera access denied')) {
-                        errorMessage = 'Camera access is required for screen sharing on mobile devices. Please allow camera access and try again.';
-                        errorTitle = 'Camera Access Required';
-                    } else if (error.message.includes('not available')) {
-                        errorMessage = 'Camera is not available on this device. Screen sharing requires camera access on mobile.';
-                        errorTitle = 'Camera Not Available';
-                    }
-                } else {
-                    if (error.message.includes('permission denied')) {
-                        errorMessage = 'Screen sharing permission was denied. Please allow screen sharing and try again.';
-                        errorTitle = 'Permission Denied';
-                    } else if (error.message.includes('not available')) {
-                        errorMessage = 'Screen sharing is not available in this browser. Please try using Chrome, Firefox, or Edge.';
-                        errorTitle = 'Browser Not Supported';
-                    }
+                if (error.message.includes('permission denied')) {
+                    errorMessage = 'Screen sharing permission was denied. Please allow screen sharing and try again.';
+                    errorTitle = 'Permission Denied';
+                } else if (error.message.includes('not available')) {
+                    errorMessage = 'Screen sharing is not available in this browser. Please try using Chrome, Firefox, or Edge.';
+                    errorTitle = 'Browser Not Supported';
                 }
 
                 showInfoModal(errorTitle, errorMessage);
