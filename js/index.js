@@ -82,7 +82,6 @@ document.addEventListener('DOMContentLoaded', () => {
         readReceiptsToggle: document.getElementById('read-receipts-toggle'),
         settingsAvatar: document.getElementById('settings-avatar'),
         settingsUsername: document.getElementById('settings-username'),
-        changeAvatarBtn: document.getElementById('change-avatar-btn'),
         changeUsernameBtn: document.getElementById('change-username-btn'),
         avatarUpload: document.getElementById('avatar-upload'),
         chatOptionsModal: document.getElementById('chat-options-modal'),
@@ -554,13 +553,14 @@ document.addEventListener('DOMContentLoaded', () => {
             for (const member of memberIds || []) {
                 const { data: userData } = await supabaseClient
                     .from(currentUser.table_name || 'profiles')
-                    .select('username')
+                    .select('username, avatar_url')
                     .eq('id', member.user_id)
                     .single();
 
                 members.push({
                     user_id: member.user_id,
-                    username: userData?.username || 'Unknown'
+                    username: userData?.username || 'Unknown',
+                    avatar_url: userData?.avatar_url
                 });
             }
 
@@ -580,7 +580,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const initials = username.substring(0, 2).toUpperCase();
 
                 memberDiv.innerHTML = `
-                <div class="member-avatar">${initials}</div>
+                <div class="member-avatar">${member.avatar_url ? `<img src="${member.avatar_url}" alt="${member.username}">` : initials}</div>
                 <div class="member-info">
                     <span class="member-name">${username}</span>
                     <span class="member-role">${isOwner ? 'Owner' : 'Member'}</span>
@@ -2228,7 +2228,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const isAudio = file.type.startsWith('audio/') || file.name.match(/\.(mp3|wav|ogg|m4a|flac|aac)$/i);
 
                 if (isImage) {
-                    content += `<img src="${file.url}" alt="${file.name}" class="message-image" onclick="window.openImageFullscreen('${file.url}')" style="min-width: 150px; max-width: 150px; max-height: 150px; min-height: 150px; border-radius: var(--button-border-radius); cursor: pointer; display: block; margin: 0.5rem 0;">`;
+                    content += `<img src="${file.url}" alt="${file.name}" class="message-image" onclick="window.openImageFullscreen('${file.url}')">`;
                 } else if (isVideo) {
                     content += `<video controls src="${file.url}" style="max-width: 300px; border-radius: var(--button-border-radius); margin: 0.5rem 0;"></video>`;
                 } else if (isAudio) {
@@ -2361,7 +2361,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const isAudio = file.type.startsWith('audio/') || file.name.match(/\.(mp3|wav|ogg|m4a|flac|aac)$/i);
 
                 if (isImage) {
-                    content += `<img src="${file.url}" alt="${file.name}" class="message-image" onclick="window.openImageFullscreen('${file.url}')" style="min-width: 150px; max-width: 150px; max-height: 150px; min-height: 150px; border-radius: var(--button-border-radius); cursor: pointer; display: block; margin: 0.5rem 0;">`;
+                    content += `<img src="${file.url}" alt="${file.name}" class="message-image" onclick="window.openImageFullscreen('${file.url}')">`;
                 } else if (isVideo) {
                     content += `<video controls src="${file.url}" style="max-width: 300px; border-radius: var(--button-border-radius); margin: 0.5rem 0;"></video>`;
                 } else if (isAudio) {
@@ -3755,7 +3755,7 @@ document.addEventListener('DOMContentLoaded', () => {
         saveSettings();
     };
 
-    ui.changeAvatarBtn.onclick = () => {
+    ui.settingsAvatar.onclick = () => {
         ui.avatarUpload.click();
     };
 
@@ -4740,10 +4740,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 ui.settingsModalPane.classList.add('visible');
             }, 10);
         }
+
+        // Add scroll event listener for fade-out effect
+        const handleSettingsScroll = () => {
+            const scrollTop = ui.settingsModalBody.scrollTop;
+            const fadeStart = 50; // Start fading after scrolling 50px
+            const fadeEnd = 200;  // Fully faded after scrolling 200px
+
+            let opacity = 1;
+            if (scrollTop > fadeStart) {
+                const fadeRange = fadeEnd - fadeStart;
+                const fadeProgress = Math.min((scrollTop - fadeStart) / fadeRange, 1);
+                opacity = 1 - fadeProgress;
+            }
+
+            // Set CSS custom property for opacity
+            document.documentElement.style.setProperty('--settings-modal-after-opacity', opacity);
+        };
+
+        // Initial check
+        handleSettingsScroll();
+
+        // Add scroll listener
+        ui.settingsModalBody.addEventListener('scroll', handleSettingsScroll);
+
+        // Store listener reference for cleanup
+        ui.settingsModalBody._scrollListener = handleSettingsScroll;
     };
 
     const hideSettingsModal = () => {
         ui.settingsModalPane.classList.remove('visible');
+
+        // Clean up scroll event listener
+        if (ui.settingsModalBody._scrollListener) {
+            ui.settingsModalBody.removeEventListener('scroll', ui.settingsModalBody._scrollListener);
+            delete ui.settingsModalBody._scrollListener;
+        }
+
+        // Reset opacity
+        document.documentElement.style.setProperty('--settings-modal-after-opacity', 1);
+
         setTimeout(() => {
             ui.settingsModalContainer.classList.remove('visible');
         }, 300);
