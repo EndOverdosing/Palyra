@@ -1512,7 +1512,7 @@ select option {
 }
 
 #settings-modal {
-    background-color: var(--primary-bg);
+    background-color: transparent;
     border-radius: var(--card-border-radius);
     z-index: 10002;
     display: flex;
@@ -1573,6 +1573,7 @@ select option {
     border-radius: var(--card-border-radius) var(--card-border-radius) 0 0;
     position: relative;
     z-index: 1;
+    background-color: var(--primary-bg);
 }
 
 #settings-modal-body::-webkit-scrollbar {
