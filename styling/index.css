@@ -1,53 +1,57 @@
 :root {
-    --primary-accent: #f1f1f1;
-    --primary-bg: #ffffff;
-    --secondary-bg: #f5f5f5;
-    --tertiary-bg: #e2e2e2;
-    --primary-text: #232323;
-    --secondary-text: #858585;
-    --header-text: #323232;
-    --border-color: #c3c3c3;
-    --success: #09ff00;
-    --error: #8B0000;
-    --warning: #f0b232;
-    --card-border-radius: 8px;
-    --card-border-radius-round: 100px;
-    --button-border-radius: 5px;
-    --button-border-radius-round: 100px;
-    --input-border-radius: 5px;
-    --input-border-radius-round: 100px;
-    --transition-fast: all 0.15s ease;
+    --primary-accent: #ffffff;
+    --primary-bg: #fefefe;
+    --secondary-bg: #f2f2f2;
+    --secondary-bg-rgb: 242, 242, 242;
+    --tertiary-bg: #dcdcdc;
+    --tertiary-bg-rgb: 220, 220, 220;
+    --primary-text: #1a1a1a;
+    --secondary-text: #6e6e6e;
+    --header-text: #2a2a2a;
+    --border-color: #b0b0b0;
+    --success: #00ff2a;
+    --error: #a30000;
+    --warning: #f5c15c;
+    --card-border-radius: 12px;
+    --card-border-radius-round: 120px;
+    --button-border-radius: 8px;
+    --button-border-radius-round: 120px;
+    --input-border-radius: 8px;
+    --input-border-radius-round: 120px;
+    --transition-fast: all 0.12s ease-in-out;
     --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    --accent-bg: #f1f1f1;
+    --accent-bg: #eaeaea;
     --base-bg: #ffffff;
-    --island-bg: rgba(0, 0, 0, 0.95);
+    --island-bg: rgba(0, 0, 0, 0.97);
     --island-text: #ffffff;
     --base-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 :root[data-theme="dark"] {
-    --primary-accent: #0e0e0e;
+    --primary-accent: #1a1a1a;
     --primary-bg: #000000;
-    --secondary-bg: #0a0a0a;
-    --tertiary-bg: #101010;
-    --primary-text: #dcdcdc;
-    --secondary-text: #7a7a7a;
-    --header-text: #cdcdcd;
-    --border-color: #3c3c3c;
-    --success: #09ff00;
-    --error: #8B0000;
-    --warning: #f0b232;
-    --card-border-radius: 8px;
-    --card-border-radius-round: 100px;
-    --button-border-radius: 5px;
-    --button-border-radius-round: 100px;
-    --input-border-radius: 5px;
-    --input-border-radius-round: 100px;
-    --transition-fast: all 0.15s ease;
+    --secondary-bg: #0d0d0d;
+    --secondary-bg-rgb: 13, 13, 13;
+    --tertiary-bg: #141414;
+    --tertiary-bg-rgb: 3, 3, 3;
+    --primary-text: #e5e5e5;
+    --secondary-text: #6c6c6c;
+    --header-text: #dcdcdc;
+    --border-color: #444444;
+    --success: #00ff2a;
+    --error: #a30000;
+    --warning: #f5c15c;
+    --card-border-radius: 12px;
+    --card-border-radius-round: 120px;
+    --button-border-radius: 8px;
+    --button-border-radius-round: 120px;
+    --input-border-radius: 8px;
+    --input-border-radius-round: 120px;
+    --transition-fast: all 0.12s ease-in-out;
     --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    --accent-bg: #0e0e0e;
+    --accent-bg: #1a1a1a;
     --base-bg: #000000;
-    --island-bg: rgba(255, 255, 255, 0.95);
+    --island-bg: rgba(255, 255, 255, 0.97);
     --island-text: #000000;
 }
 
@@ -574,7 +578,7 @@ button.secondary:hover {
 }
 
 .secondary-btn {
-    background-color: var(--tertiary-bg);
+    background-color: rgba(var(--tertiary-bg-rgb), 0.5);
     color: var(--primary-text);
     height: 50px;
     width: 50px;
@@ -647,24 +651,24 @@ button.secondary:hover {
         content: '';
         position: fixed;
         inset: 0 0 auto 0;
-        height: calc(100px + env(safe-area-inset-top, 0));
+        height: calc(120px + env(safe-area-inset-top, 0));
         background: linear-gradient(to bottom,
-                color-mix(in srgb, var(--primary-bg) 95%, transparent) 0%,
-                color-mix(in srgb, var(--primary-bg) 85%, transparent) 30%,
-                color-mix(in srgb, var(--primary-bg) 55%, transparent) 60%,
-                color-mix(in srgb, var(--primary-bg) 15%, transparent) 85%,
+                color-mix(in srgb, var(--primary-text) 47.5%, transparent) 0%,
+                color-mix(in srgb, var(--primary-text) 42.5%, transparent) 30%,
+                color-mix(in srgb, var(--primary-text) 27.5%, transparent) 60%,
+                color-mix(in srgb, var(--primary-text) 7.5%, transparent) 85%,
                 transparent 100%);
         backdrop-filter: blur(48px) saturate(1.15);
         -webkit-backdrop-filter: blur(48px) saturate(1.15);
         mask: linear-gradient(to bottom,
-                var(--primary-bg) 0%,
-                color-mix(in srgb, var(--primary-bg) 90%, transparent) 40%,
-                color-mix(in srgb, var(--primary-bg) 60%, transparent) 70%,
+                var(--primary-text) 0%,
+                color-mix(in srgb, var(--primary-text) 45%, transparent) 40%,
+                color-mix(in srgb, var(--primary-text) 30%, transparent) 70%,
                 transparent 100%);
         -webkit-mask: linear-gradient(to bottom,
-                var(--primary-bg) 0%,
-                color-mix(in srgb, var(--primary-bg) 90%, transparent) 40%,
-                color-mix(in srgb, var(--primary-bg) 60%, transparent) 70%,
+                var(--primary-text) 0%,
+                color-mix(in srgb, var(--primary-text) 45%, transparent) 40%,
+                color-mix(in srgb, var(--primary-text) 30%, transparent) 70%,
                 transparent 100%);
         z-index: 1;
         pointer-events: none;
@@ -735,7 +739,6 @@ button.secondary:hover {
 .friend-status {
     align-items: flex-end;
     justify-content: flex-end;
-    display: flex;
     margin-left: auto;
     flex-shrink: 0;
     margin-right: 20px;
@@ -1313,7 +1316,7 @@ button.secondary:hover {
 }
 
 #modal-content {
-    background-color: var(--secondary-bg);
+    background-color: rgba(var(--secondary-bg-rgb), 0.5);
     border-radius: var(--card-border-radius);
     padding: 2rem;
     max-width: 500px;
@@ -1397,7 +1400,7 @@ button.secondary:hover {
 }
 
 select {
-    background-color: var(--tertiary-bg);
+    background-color: rgba(var(--tertiary-bg-rgb), 0.5);
     border: none;
     border-radius: var(--input-border-radius);
     color: var(--primary-text);
@@ -1483,7 +1486,7 @@ select option {
 }
 
 #settings-modal {
-    background-color: var(--secondary-bg);
+    background-color: var(--primary-bg);
     border-radius: var(--card-border-radius);
     z-index: 10002;
     display: flex;
@@ -1502,8 +1505,9 @@ select option {
     padding: 0.75rem;
     cursor: grab;
     flex-shrink: 0;
-    background-color: var(--secondary-bg);
     position: relative;
+    background: transparent;
+    z-index: 1;
 }
 
 #settings-modal-header:active {
@@ -1530,6 +1534,11 @@ select option {
     flex: 1;
     overflow-y: auto;
     padding: 1.5rem;
+    position: relative;
+    top: -20px;
+    margin-top: 20px;
+    background: var(--primary-bg);
+    border-radius: var(--card-border-radius) var(--card-border-radius) 0 0;
 }
 
 #settings-modal-body::-webkit-scrollbar {
@@ -1692,11 +1701,7 @@ select option {
     padding: 1rem;
     border-radius: var(--button-border-radius);
     transition: var(--transition-fast);
-    background-color: var(--tertiary-bg);
-}
-
-.toggle-switch:hover {
-    background-color: var(--border-color);
+    background-color: rgba(var(--tertiary-bg-rgb), 0.5);
 }
 
 .toggle-switch input[type="checkbox"] {
@@ -1727,10 +1732,6 @@ select option {
     background-color: white;
     border-radius: 50%;
     transition: var(--transition-fast);
-}
-
-.toggle-switch input[type="checkbox"]:checked+.toggle-slider {
-    background-color: var(--primary-accent);
 }
 
 .toggle-switch input[type="checkbox"]:checked+.toggle-slider::before {
@@ -1822,8 +1823,9 @@ select option {
 .info-item {
     justify-content: space-between;
     padding: 0.75rem;
-    background-color: var(--tertiary-bg);
+    background-color: rgba(var(--tertiary-bg-rgb), 0.5);
     border-radius: var(--button-border-radius);
+    margin-top: 0.5rem;
 }
 
 .info-label {
@@ -1860,7 +1862,7 @@ select option {
     align-items: center;
     gap: 1rem;
     padding: 1rem;
-    background-color: var(--tertiary-bg);
+    background-color: rgba(var(--tertiary-bg-rgb), 0.5);
     border-radius: var(--button-border-radius);
     color: var(--primary-text);
     font-size: 1rem;
@@ -1926,7 +1928,6 @@ select option {
     align-items: center;
     gap: 0.75rem;
     padding: 0.75rem;
-    background-color: var(--tertiary-bg);
     border-radius: var(--button-border-radius);
     margin-bottom: 0.5rem;
 }
@@ -2358,10 +2359,6 @@ body[data-font-size="large"] {
 
     .mobile-only {
         display: block;
-    }
-
-    .message {
-        max-width: 85%;
     }
 
     #modal-content {
@@ -3872,4 +3869,82 @@ body[data-font-size="large"] {
 
 .hidden {
     display: none !important;
+}
+
+.file-upload-loading {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 2rem;
+    z-index: 10005;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+.file-upload-progress {
+    width: 100%;
+    height: 4px;
+    background: var(--tertiary-bg);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.file-upload-progress-bar {
+    height: 100%;
+    background: var(--primary-accent);
+    transition: width 0.3s ease;
+    animation: progress-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes progress-pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.7;
+    }
+}
+
+.file-upload-loading-text {
+    font-size: 0.9rem;
+    color: var(--secondary-text);
+}
+
+.image-fullscreen-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.95);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.2s ease;
+}
+
+.image-fullscreen-overlay img {
+    max-width: 90vw;
+    max-height: 90vh;
+    object-fit: contain;
+    animation: zoomIn 0.3s ease;
+}
+
+@keyframes zoomIn {
+    from {
+        transform: scale(0.8);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
 }

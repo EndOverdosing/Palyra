@@ -143,8 +143,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let isInCall = false;
     let typingTimeout = null;
 
-    let userKeys = { publicKey: null, privateKey: null };
-
     let currentTab = 'personal';
     let servers = [];
     let currentServer = null;
@@ -412,6 +410,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentChatType = 'server';
 
         updateURLPath(`server/${server.id}`);
+        document.querySelectorAll('.friend-item').forEach(item => item.classList.remove('active'));
 
         ui.welcomeScreen.classList.add('hidden');
         ui.chatView.classList.remove('hidden');
@@ -439,7 +438,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (window.innerWidth <= 768) {
             ui.sidebar.classList.remove('open');
         }
-
         await loadServerMessages(server.id);
         subscribeToServerMessages(server.id);
     }
@@ -530,18 +528,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${msg.user_id === currentUser.id ? 'sent' : 'received'}`;
-        messageDiv.setAttribute('data-message-id', msg.id);
-
-        const username = msg.username || 'Unknown';
-
-        messageDiv.innerHTML = `
-        ${msg.user_id !== currentUser.id ? `<strong>${username}</strong><br>` : ''}
-        <div class="message-content">${msg.content}</div>
-        <span class="message-time">${new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-    `;
-
+        const messageDiv = createServerMessageElement(msg, msg.username || 'Unknown');
         ui.messagesContainer.appendChild(messageDiv);
         ui.messagesContainer.scrollTop = ui.messagesContainer.scrollHeight;
     }
@@ -1062,137 +1049,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    const CryptoHelper = {
-        async generateKeyPair() {
-            return await crypto.subtle.generateKey(
-                {
-                    name: "RSA-OAEP",
-                    modulusLength: 2048,
-                    publicExponent: new Uint8Array([1, 0, 1]),
-                    hash: "SHA-256"
-                },
-                true,
-                ["encrypt", "decrypt"]
-            );
-        },
-
-        async exportPublicKey(key) {
-            const exported = await crypto.subtle.exportKey("spki", key);
-            return btoa(String.fromCharCode(...new Uint8Array(exported)));
-        },
-
-        async importPublicKey(keyData) {
-            const binaryKey = Uint8Array.from(atob(keyData), c => c.charCodeAt(0));
-            return await crypto.subtle.importKey(
-                "spki",
-                binaryKey,
-                { name: "RSA-OAEP", hash: "SHA-256" },
-                true,
-                ["encrypt"]
-            );
-        },
-
-        async exportPrivateKey(key) {
-            const exported = await crypto.subtle.exportKey("pkcs8", key);
-            return btoa(String.fromCharCode(...new Uint8Array(exported)));
-        },
-
-        async importPrivateKey(keyData) {
-            const binaryKey = Uint8Array.from(atob(keyData), c => c.charCodeAt(0));
-            return await crypto.subtle.importKey(
-                "pkcs8",
-                binaryKey,
-                { name: "RSA-OAEP", hash: "SHA-256" },
-                true,
-                ["decrypt"]
-            );
-        },
-
-        async generateAESKey() {
-            return await crypto.subtle.generateKey(
-                { name: "AES-GCM", length: 256 },
-                true,
-                ["encrypt", "decrypt"]
-            );
-        },
-
-        async exportAESKey(key) {
-            const exported = await crypto.subtle.exportKey("raw", key);
-            return btoa(String.fromCharCode(...new Uint8Array(exported)));
-        },
-
-        async importAESKey(keyData) {
-            const binaryKey = Uint8Array.from(atob(keyData), c => c.charCodeAt(0));
-            return await crypto.subtle.importKey(
-                "raw",
-                binaryKey,
-                { name: "AES-GCM" },
-                true,
-                ["encrypt", "decrypt"]
-            );
-        },
-
-        async encryptMessage(message, recipientPublicKey) {
-            const aesKey = await this.generateAESKey();
-            const iv = crypto.getRandomValues(new Uint8Array(12));
-
-            const encoder = new TextEncoder();
-            const encodedMessage = encoder.encode(message);
-
-            const encryptedMessage = await crypto.subtle.encrypt(
-                { name: "AES-GCM", iv: iv },
-                aesKey,
-                encodedMessage
-            );
-
-            const exportedAESKey = await crypto.subtle.exportKey("raw", aesKey);
-            const encryptedAESKey = await crypto.subtle.encrypt(
-                { name: "RSA-OAEP" },
-                recipientPublicKey,
-                exportedAESKey
-            );
-
-            return {
-                encryptedMessage: btoa(String.fromCharCode(...new Uint8Array(encryptedMessage))),
-                encryptedKey: btoa(String.fromCharCode(...new Uint8Array(encryptedAESKey))),
-                iv: btoa(String.fromCharCode(...new Uint8Array(iv)))
-            };
-        },
-
-        async decryptMessage(encryptedData, privateKey) {
-            try {
-                const encryptedAESKey = Uint8Array.from(atob(encryptedData.encryptedKey), c => c.charCodeAt(0));
-                const encryptedMessage = Uint8Array.from(atob(encryptedData.encryptedMessage), c => c.charCodeAt(0));
-                const iv = Uint8Array.from(atob(encryptedData.iv), c => c.charCodeAt(0));
-
-                const aesKeyData = await crypto.subtle.decrypt(
-                    { name: "RSA-OAEP" },
-                    privateKey,
-                    encryptedAESKey
-                );
-
-                const aesKey = await crypto.subtle.importKey(
-                    "raw",
-                    aesKeyData,
-                    { name: "AES-GCM" },
-                    false,
-                    ["decrypt"]
-                );
-
-                const decryptedMessage = await crypto.subtle.decrypt(
-                    { name: "AES-GCM", iv: iv },
-                    aesKey,
-                    encryptedMessage
-                );
-
-                const decoder = new TextDecoder();
-                return decoder.decode(decryptedMessage);
-            } catch (error) {
-                return '[Encrypted message - unable to decrypt]';
-            }
-        }
-    };
-
     const loadUserData = async (userId) => {
         try {
             const { data: profile, error } = await supabase
@@ -1220,54 +1076,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 is_online: userSettings.onlineStatus,
                 last_seen: new Date().toISOString()
             }).eq('id', userId);
-
-            const initializeEncryption = async () => {
-                const storedPrivateKey = localStorage.getItem(`privateKey_${currentUser.id}`);
-
-                if (storedPrivateKey) {
-                    try {
-                        userKeys.privateKey = await CryptoHelper.importPrivateKey(storedPrivateKey);
-
-                        const { data: profile } = await supabase
-                            .from('profiles')
-                            .select('public_key')
-                            .eq('id', currentUser.id)
-                            .single();
-
-                        if (profile?.public_key) {
-                            userKeys.publicKey = await CryptoHelper.importPublicKey(profile.public_key);
-                        } else {
-                            await generateNewKeys();
-                        }
-                    } catch (error) {
-                        await generateNewKeys();
-                    }
-                } else {
-                    await generateNewKeys();
-                }
-            };
-
-            const generateNewKeys = async () => {
-                const keyPair = await CryptoHelper.generateKeyPair();
-                userKeys.publicKey = keyPair.publicKey;
-                userKeys.privateKey = keyPair.privateKey;
-
-                const exportedPublicKey = await CryptoHelper.exportPublicKey(keyPair.publicKey);
-                const exportedPrivateKey = await CryptoHelper.exportPrivateKey(keyPair.privateKey);
-
-                localStorage.setItem(`privateKey_${currentUser.id}`, exportedPrivateKey);
-
-                const { error } = await supabase
-                    .from('profiles')
-                    .update({ public_key: exportedPublicKey })
-                    .eq('id', currentUser.id);
-
-                if (error) {
-                } else {
-                }
-            };
-
-            await initializeEncryption();
 
             await loadFriends();
             await loadFriendRequests();
@@ -1350,13 +1158,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const { data: friendships } = await supabase
             .from('friendships')
-            .select('*, friend:profiles!friendships_friend_id_fkey(*, public_key)')
+            .select('*, friend:profiles!friendships_friend_id_fkey(*)')
             .eq('user_id', currentUser.id)
             .eq('status', 'accepted');
 
         const { data: reverseFriendships } = await supabase
             .from('friendships')
-            .select('*, friend:profiles!friendships_user_id_fkey(*, public_key)')
+            .select('*, friend:profiles!friendships_user_id_fkey(*)')
             .eq('friend_id', currentUser.id)
             .eq('status', 'accepted');
 
@@ -1879,26 +1687,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const { data: sender } = await supabase.from('profiles').select('*').eq('id', message.sender_id).single();
         if (!sender) return;
 
-        if (message.is_encrypted) {
-            try {
-                if (message.receiver_id === currentUser.id && message.encrypted_content) {
-                    message.content = await CryptoHelper.decryptMessage({
-                        encryptedMessage: message.encrypted_content,
-                        encryptedKey: message.encrypted_key,
-                        iv: message.iv
-                    }, userKeys.privateKey);
-                } else if (message.sender_id === currentUser.id && message.sender_encrypted_content) {
-                    message.content = await CryptoHelper.decryptMessage({
-                        encryptedMessage: message.sender_encrypted_content,
-                        encryptedKey: message.sender_encrypted_key,
-                        iv: message.sender_iv
-                    }, userKeys.privateKey);
-                }
-            } catch (error) {
-                message.content = '[Unable to decrypt]';
-            }
-        }
-
         await updateConversationsList();
 
         if (currentChatType === 'friend' && currentChatFriend &&
@@ -2025,6 +1813,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             `;
 
                                 friendDiv.addEventListener('click', () => {
+                                    currentChatType = 'friend';
+                                    currentServer = null;
                                     window.openChat(friend.id, 'friend');
                                 });
 
@@ -2150,7 +1940,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="request-time">${formatTimeAgo(request.created_at)}</div>
                     </div>
                     <div class="request-actions">
-                        <button onclick="window.acceptFriendRequest('${request.id}')" style="background-color: var(--success);" title="Accept"><i class="fa-solid fa-check"></i></button>
+                        <button onclick="window.acceptFriendRequest('${request.id}')" style="background-color: var(--tertiary-bg);" title="Accept"><i class="fa-solid fa-check"></i></button>
                         <button onclick="window.declineFriendRequest('${request.id}')" style="background-color: var(--error);" title="Decline"><i class="fa-solid fa-times"></i></button>
                     </div>
                 </div>
@@ -2249,12 +2039,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.openChat = async (id, type) => {
         currentChatType = type;
-        updateURLPath(`chat/${id}`);
+        currentServer = null;
 
         if (type === 'friend') {
             currentChatFriend = friends[id];
-            if (!currentChatFriend) return;
-
+            if (!currentChatFriend) {
+                return;
+            }
+            updateURLPath(`chat/${id}`);
             ui.chatAvatar.textContent = currentChatFriend.username[0].toUpperCase();
 
             const isOnline = onlineUsers.has(currentChatFriend.id);
@@ -2266,11 +2058,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             ui.chatFriendStatus.classList.toggle('online', onlineUsers.has(currentChatFriend.id));
+            ui.chatFriendName.textContent = currentChatFriend.username;
+            document.querySelectorAll('.personal-chat-only').forEach(el => el.classList.remove('hidden'));
+            document.querySelectorAll('.server-chat-only').forEach(el => el.classList.add('hidden'));
 
             await loadMessages(currentChatFriend.id);
             subscribeToTypingIndicators(id);
         }
-
         ui.welcomeScreen.classList.add('hidden');
         ui.chatView.classList.remove('hidden');
 
@@ -2292,7 +2086,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.querySelectorAll('.friend-item').forEach(item => item.classList.remove('active'));
         const activeItem = document.querySelector(`[data-friend-id="${id}"]`);
-        if (activeItem) activeItem.classList.add('active');
+        if (activeItem) {
+            activeItem.classList.add('active');
+        } else {
+        }
     };
 
     const subscribeToTypingIndicators = (friendId) => {
@@ -2383,6 +2180,31 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    window.openImageFullscreen = (imageUrl) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'image-fullscreen-overlay';
+
+        const img = document.createElement('img');
+        img.src = imageUrl;
+        img.alt = 'Fullscreen image';
+
+        overlay.onclick = (e) => {
+            if (e.target === overlay) {
+                overlay.remove();
+            }
+        };
+
+        overlay.appendChild(img);
+        document.body.appendChild(overlay);
+
+        document.addEventListener('keydown', function escHandler(e) {
+            if (e.key === 'Escape') {
+                overlay.remove();
+                document.removeEventListener('keydown', escHandler);
+            }
+        });
+    };
+
     const createMessageElement = (message, sender) => {
 
         const messageDiv = document.createElement('div');
@@ -2394,10 +2216,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let content = '';
 
-        if (message.is_encrypted) {
-            content += '<span style="font-size: 0.7rem; color: var(--secondary-text); display: flex; align-items: center; gap: 0.25rem; margin-bottom: 0.25rem;"><i class="fa-solid fa-lock"></i> Encrypted</span>';
-        }
-
         if (message.reply_to_id) {
             const replyText = message.reply_to_content || 'Original message';
             content += `<div class="message-reply-context" style="background: rgba(88, 101, 242, 0.1); padding: 0.5rem; border-left: 3px solid var(--primary-accent); margin-bottom: 0.5rem; border-radius: 4px; font-size: 0.85rem;"><i class="fa-solid fa-reply"></i> ${escapeHtml(replyText.substring(0, 50))}${replyText.length > 50 ? '...' : ''}</div>`;
@@ -2405,11 +2223,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (message.files && Array.isArray(message.files) && message.files.length > 0) {
             message.files.forEach(file => {
-                if (file.type.startsWith('image/')) {
-                    content += `<img src="${file.url}" alt="${file.name}" class="message-image" onclick="window.open('${file.url}', '_blank')" style="max-width: 150px; max-height: 150px; border-radius: var(--button-border-radius); cursor: pointer; display: block; margin: 0.5rem 0;">`;
-                } else if (file.type.startsWith('video/')) {
+                const isImage = file.type.startsWith('image/') || file.name.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i);
+                const isVideo = file.type.startsWith('video/') || file.name.match(/\.(mp4|webm|ogg|mov|avi|mkv)$/i);
+                const isAudio = file.type.startsWith('audio/') || file.name.match(/\.(mp3|wav|ogg|m4a|flac|aac)$/i);
+
+                if (isImage) {
+                    content += `<img src="${file.url}" alt="${file.name}" class="message-image" onclick="window.openImageFullscreen('${file.url}')" style="min-width: 150px; max-width: 150px; max-height: 150px; min-height: 150px; border-radius: var(--button-border-radius); cursor: pointer; display: block; margin: 0.5rem 0;">`;
+                } else if (isVideo) {
                     content += `<video controls src="${file.url}" style="max-width: 300px; border-radius: var(--button-border-radius); margin: 0.5rem 0;"></video>`;
-                } else if (file.type.startsWith('audio/')) {
+                } else if (isAudio) {
                     content += `<audio controls src="${file.url}" class="message-audio" style="max-width: 100%; margin: 0.5rem 0;"></audio>`;
                 } else {
                     const icon = getFileIcon(file.type, file.name);
@@ -2421,7 +2243,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (message.file_url) {
             const fileType = message.file_type || 'file';
             if (fileType.startsWith('image/')) {
-                content += `<img src="${message.file_url}" alt="Image" class="message-image" onclick="window.open('${message.file_url}', '_blank')" style="max-width: 300px; border-radius: var(--button-border-radius); cursor: pointer; display: block;">`;
+                content += `<img src="${message.file_url}" alt="Image" class="message-image" onclick="window.openImageFullscreen('${message.file_url}')" style="max-width: 300px; border-radius: var(--button-border-radius); cursor: pointer; display: block;">`;
             } else if (fileType.startsWith('audio/')) {
                 content += `<audio controls src="${message.file_url}" class="message-audio" style="max-width: 100%;"></audio>`;
             } else {
@@ -2527,143 +2349,35 @@ document.addEventListener('DOMContentLoaded', () => {
         messageDiv.className = `message ${msg.user_id === currentUser.id ? 'sent' : 'received'}`;
         messageDiv.setAttribute('data-message-id', msg.id);
 
-        messageDiv.innerHTML = `
-        ${msg.user_id !== currentUser.id ? `<strong>${username}</strong><br>` : ''}
-        <div class="message-content">${msg.content}</div>
-        <span class="message-time">${new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-    `;
-
-        return messageDiv;
-    }
-
-    const loadMessages = async (friendId) => {
-        showSkeletonMessages();
-
-        try {
-            if (!currentChatFriend) {
-                currentChatFriend = friends[friendId];
-            }
-
-            const { data: messages } = await supabase
-                .from('messages')
-                .select('*')
-                .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${currentUser.id})`)
-                .order('created_at', { ascending: true });
-            messages?.forEach(msg => {
-            });
-
-            const decryptedMessages = await Promise.all(messages.map(async (msg) => {
-                if (msg.is_encrypted) {
-                    try {
-                        if (msg.sender_id === currentUser.id && msg.sender_encrypted_content) {
-                            msg.content = await CryptoHelper.decryptMessage({
-                                encryptedMessage: msg.sender_encrypted_content,
-                                encryptedKey: msg.sender_encrypted_key,
-                                iv: msg.sender_iv
-                            }, userKeys.privateKey);
-                        }
-                        else if (msg.receiver_id === currentUser.id && msg.encrypted_content) {
-                            msg.content = await CryptoHelper.decryptMessage({
-                                encryptedMessage: msg.encrypted_content,
-                                encryptedKey: msg.encrypted_key,
-                                iv: msg.iv
-                            }, userKeys.privateKey);
-                        }
-                    } catch (error) {
-                        msg.content = '[Unable to decrypt]';
-                    }
-                }
-                return msg;
-            }));
-            renderAllMessages(decryptedMessages || []);
-
-            if (userSettings.readReceipts) {
-                await supabase.from('messages')
-                    .update({ read: true })
-                    .eq('receiver_id', currentUser.id)
-                    .eq('sender_id', friendId);
-            }
-
-            scrollToBottom();
-        } catch (error) {
-            ui.messagesContainer.innerHTML = '';
-        }
-    };
-
-    const displayMessage = (message, sender) => {
-        if (document.querySelector(`[data-message-id="${message.id}"]`)) return;
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${message.sender_id === currentUser.id ? 'sent' : 'received'}`;
-        messageDiv.dataset.messageId = message.id;
-
         const isMobile = window.innerWidth <= 768;
-        const isSent = message.sender_id === currentUser.id;
+        const isSent = msg.user_id === currentUser.id;
 
         let content = '';
 
-        if (message.is_encrypted) {
-            content += '<span style="font-size: 0.7rem; color: var(--secondary-text); display: flex; align-items: center; gap: 0.25rem; margin-bottom: 0.25rem;"><i class="fa-solid fa-lock"></i> Encrypted</span>';
-        }
+        if (msg.files && Array.isArray(msg.files) && msg.files.length > 0) {
+            msg.files.forEach(file => {
+                const isImage = file.type.startsWith('image/') || file.name.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i);
+                const isVideo = file.type.startsWith('video/') || file.name.match(/\.(mp4|webm|ogg|mov|avi|mkv)$/i);
+                const isAudio = file.type.startsWith('audio/') || file.name.match(/\.(mp3|wav|ogg|m4a|flac|aac)$/i);
 
-        if (message.reply_to_id) {
-            const replyText = message.reply_to_content || 'Original message';
-            content += `<div class="message-reply-context" style="background: rgba(88, 101, 242, 0.1); padding: 0.5rem; border-left: 3px solid var(--primary-accent); margin-bottom: 0.5rem; border-radius: 4px; font-size: 0.85rem;"><i class="fa-solid fa-reply"></i> ${escapeHtml(replyText.substring(0, 50))}${replyText.length > 50 ? '...' : ''}</div>`;
-        }
-
-        if (message.files && Array.isArray(message.files) && message.files.length > 0) {
-            message.files.forEach(file => {
-                if (file.type.startsWith('image/')) {
-                    content += `<div class="message-file-attachment"><img src="${file.url}" alt="${file.name}" onclick="window.open('${file.url}', '_blank')" style="max-width: 300px; max-height: 300px; border-radius: 8px; cursor: pointer; display: block; margin: 0.5rem 0;"></div>`;
-                } else if (file.type.startsWith('video/')) {
-                    content += `<div class="message-file-attachment"><video controls src="${file.url}" style="max-width: 300px; border-radius: 8px; margin: 0.5rem 0;"></video></div>`;
-                } else if (file.type.startsWith('audio/')) {
-                    content += `<div class="message-file-attachment"><audio controls src="${file.url}" style="max-width: 100%; margin: 0.5rem 0;"></audio></div>`;
+                if (isImage) {
+                    content += `<img src="${file.url}" alt="${file.name}" class="message-image" onclick="window.openImageFullscreen('${file.url}')" style="min-width: 150px; max-width: 150px; max-height: 150px; min-height: 150px; border-radius: var(--button-border-radius); cursor: pointer; display: block; margin: 0.5rem 0;">`;
+                } else if (isVideo) {
+                    content += `<video controls src="${file.url}" style="max-width: 300px; border-radius: var(--button-border-radius); margin: 0.5rem 0;"></video>`;
+                } else if (isAudio) {
+                    content += `<audio controls src="${file.url}" class="message-audio" style="max-width: 100%; margin: 0.5rem 0;"></audio>`;
                 } else {
                     const icon = getFileIcon(file.type, file.name);
-                    content += `<div class="message-file-attachment document" onclick="window.open('${file.url}', '_blank')" style="display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem; background: var(--tertiary-bg); border-radius: 8px; cursor: pointer; margin: 0.5rem 0;">
-                    <i class="file-icon fa-solid ${icon}" style="font-size: 1.5rem; color: var(--primary-accent);"></i>
-                    <div class="file-info">
-                        <div class="file-name" style="font-weight: 500;">${file.name}</div>
-                        <div class="file-size" style="font-size: 0.85rem; color: var(--secondary-text);">${formatFileSize(file.size)}</div>
-                    </div>
-                </div>`;
+                    content += `<a href="${file.url}" target="_blank" class="message-file" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: var(--tertiary-bg); border-radius: var(--button-border-radius); text-decoration: none; color: var(--primary-text); margin: 0.5rem 0;"><i class="fa-solid ${icon}"></i> <div><div>${file.name}</div><div style="font-size: 0.85rem; color: var(--secondary-text);">${formatFileSize(file.size)}</div></div></a>`;
                 }
             });
         }
 
-        if (message.file_url) {
-            const fileType = message.file_type || 'file';
-            if (fileType.startsWith('image/')) {
-                content += `<div class="message-file-attachment"><img src="${message.file_url}" alt="Image" onclick="window.open('${message.file_url}', '_blank')" style="max-width: 300px; max-height: 300px; border-radius: 8px; cursor: pointer; display: block; margin: 0.5rem 0;"></div>`;
-            } else if (fileType.startsWith('audio/')) {
-                content += `<div class="message-file-attachment"><audio controls src="${message.file_url}" style="max-width: 100%; margin: 0.5rem 0;"></audio></div>`;
-            } else if (fileType.startsWith('video/')) {
-                content += `<div class="message-file-attachment"><video controls src="${message.file_url}" style="max-width: 300px; border-radius: 8px; margin: 0.5rem 0;"></video></div>`;
-            } else {
-                const icon = getFileIcon(fileType, message.file_name || '');
-                content += `<div class="message-file-attachment document" onclick="window.open('${message.file_url}', '_blank')" style="display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem; background: var(--tertiary-bg); border-radius: 8px; cursor: pointer; margin: 0.5rem 0;">
-                <i class="file-icon fa-solid ${icon}" style="font-size: 1.5rem;"></i>
-                <div class="file-info">
-                    <div class="file-name" style="font-weight: 500;">${message.file_name || 'File'}</div>
-                </div>
-            </div>`;
-            }
+        if (msg.content) {
+            content += `<div class="message-content">${escapeHtml(msg.content)}</div>`;
         }
 
-        if (message.content) {
-            content += `<div class="message-content">${escapeHtml(message.content)}${message.edited ? '<span class="message-edited" style="font-size: 0.75rem; color: var(--secondary-text); margin-left: 0.5rem;">(edited)</span>' : ''}</div>`;
-        }
-
-        if (message.call_duration !== null && message.call_duration !== undefined) {
-            const duration = formatCallDuration(message.call_duration);
-            const callType = message.call_duration === 0 ? 'Missed call' : 'Call';
-            const durationText = message.call_duration === 0 ? '' : ` • ${duration}`;
-            content = `<div class="message-call-info" style="display: flex; align-items: center; gap: 0.5rem; color: var(--secondary-text); font-size: 0.9rem;"><i class="fa-solid fa-phone"></i> ${callType}${durationText}</div>`;
-        }
-
-        content += `<div class="message-reactions" data-message-id="${message.id}" style="display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.25rem;"></div>`;
-
-        const timestamp = new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const timestamp = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
         if (isMobile) {
             const timestampDiv = document.createElement('div');
@@ -2681,7 +2395,10 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
             const contentWrapper = document.createElement('div');
-            contentWrapper.innerHTML = content;
+            contentWrapper.innerHTML = `
+            ${msg.user_id !== currentUser.id ? `<strong>${username}</strong><br>` : ''}
+            ${content}
+        `;
             contentWrapper.style.cssText = 'position: relative;';
 
             messageDiv.appendChild(contentWrapper);
@@ -2689,54 +2406,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
             setupMessageSwipe(contentWrapper, isSent);
         } else {
-            const contentWrapper = document.createElement('div');
-            contentWrapper.innerHTML = content;
-            messageDiv.appendChild(contentWrapper);
-
-            const timestampDiv = document.createElement('div');
-            timestampDiv.className = 'message-timestamp';
-            timestampDiv.textContent = timestamp;
-            timestampDiv.style.cssText = `
-            font-size: 0.7rem;
-            color: var(--secondary-text);
-            margin-top: 0.25rem;
-            text-align: ${isSent ? 'right' : 'left'};
+            messageDiv.innerHTML = `
+            ${msg.user_id !== currentUser.id ? `<strong>${username}</strong><br>` : ''}
+            ${content}
+            <span class="message-time" style="font-size: 0.7rem; color: var(--secondary-text); margin-top: 0.25rem; display: block; text-align: ${isSent ? 'right' : 'left'};">${timestamp}</span>
         `;
-            messageDiv.appendChild(timestampDiv);
         }
 
-        messageDiv.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            showMessageContextMenu(e, message);
-        });
+        return messageDiv;
+    }
 
-        let lastTap = 0;
-        const DOUBLE_TAP_DELAY = 300;
+    const loadMessages = async (friendId) => {
+        showSkeletonMessages();
 
-        messageDiv.addEventListener('touchend', (e) => {
-            const currentTime = new Date().getTime();
-            const tapLength = currentTime - lastTap;
-
-            if (tapLength < DOUBLE_TAP_DELAY && tapLength > 0) {
-                e.preventDefault();
-                const touch = e.changedTouches[0];
-                const event = new MouseEvent('contextmenu', {
-                    clientX: touch.clientX,
-                    clientY: touch.clientY,
-                    bubbles: true,
-                    cancelable: true
-                });
-                messageDiv.dispatchEvent(event);
+        try {
+            if (!currentChatFriend) {
+                currentChatFriend = friends[friendId];
             }
-            lastTap = currentTime;
-        }, { passive: false });
 
-        messageDiv.addEventListener('click', (e) => {
-            if (e.target.classList.contains('message-reaction')) {
-                toggleReaction(message.id, e.target.dataset.emoji);
+            const { data: messages } = await supabase
+                .from('messages')
+                .select('*')
+                .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${currentUser.id})`)
+                .order('created_at', { ascending: true });
+
+            renderAllMessages(messages || []);
+
+            if (userSettings.readReceipts) {
+                await supabase.from('messages')
+                    .update({ read: true })
+                    .eq('receiver_id', currentUser.id)
+                    .eq('sender_id', friendId);
             }
-        });
 
+            scrollToBottom();
+        } catch (error) {
+            ui.messagesContainer.innerHTML = '';
+        }
+    };
+
+    const displayMessage = (message, sender) => {
+        if (document.querySelector(`[data-message-id="${message.id}"]`)) return;
+        const messageDiv = createMessageElement(message, sender);
         ui.messagesContainer.appendChild(messageDiv);
         if (message.reactions) {
             renderReactions(message.id, message.reactions);
@@ -3307,12 +3018,154 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (currentServer) {
-            const { data, error } = await supabaseClient.from('server_messages').insert({
+            let messageData = {
                 server_id: currentServer.id,
                 user_id: currentUser.id,
                 content,
                 created_at: new Date().toISOString()
-            }).select().single();
+            };
+
+            if (pendingFiles.length > 0) {
+                const filePreview = document.getElementById('file-attachment-preview');
+                if (!filePreview) return;
+
+                const uploadedFiles = [];
+                const totalFiles = pendingFiles.length;
+
+                for (let i = 0; i < pendingFiles.length; i++) {
+                    const file = pendingFiles[i];
+                    const fileItem = filePreview.children[totalFiles - 1 - i];
+
+                    if (fileItem) {
+                        const overlay = document.createElement('div');
+                        overlay.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.7);
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                border-radius: var(--button-border-radius);
+                z-index: 10;
+            `;
+                        overlay.innerHTML = `
+                <div style="color: white; font-size: 0.75rem; margin-bottom: 0.5rem;">Uploading...</div>
+                <div style="width: 80%; height: 3px; background: rgba(255,255,255,0.3); border-radius: 2px; overflow: hidden;">
+                    <div class="upload-progress-bar" style="height: 100%; background: var(--primary-accent); width: 0%; transition: width 0.3s ease;"></div>
+                </div>
+                <div class="upload-status" style="color: white; font-size: 0.65rem; margin-top: 0.25rem;">0%</div>
+            `;
+                        fileItem.appendChild(overlay);
+
+                        const progressBar = overlay.querySelector('.upload-progress-bar');
+                        const statusText = overlay.querySelector('.upload-status');
+
+                        try {
+                            let fileToUpload = file;
+
+                            if (file.type.startsWith('image/') && file.size > 5 * 1024 * 1024) {
+                                statusText.textContent = 'Compressing...';
+                                await new Promise(resolve => setTimeout(resolve, 200));
+                                fileToUpload = await new Promise((resolve, reject) => {
+                                    const reader = new FileReader();
+                                    reader.onload = (event) => {
+                                        const img = new Image();
+                                        img.onload = () => {
+                                            const canvas = document.createElement('canvas');
+                                            const MAX_WIDTH = 1920;
+                                            const MAX_HEIGHT = 1920;
+                                            let width = img.width;
+                                            let height = img.height;
+
+                                            if (width > height) {
+                                                if (width > MAX_WIDTH) {
+                                                    height *= MAX_WIDTH / width;
+                                                    width = MAX_WIDTH;
+                                                }
+                                            } else {
+                                                if (height > MAX_HEIGHT) {
+                                                    width *= MAX_HEIGHT / height;
+                                                    height = MAX_HEIGHT;
+                                                }
+                                            }
+
+                                            canvas.width = width;
+                                            canvas.height = height;
+                                            const ctx = canvas.getContext('2d');
+                                            ctx.drawImage(img, 0, 0, width, height);
+
+                                            canvas.toBlob((blob) => {
+                                                if (blob) {
+                                                    resolve(new File([blob], file.name, { type: 'image/jpeg' }));
+                                                } else {
+                                                    resolve(file);
+                                                }
+                                            }, 'image/jpeg', 0.8);
+                                        };
+                                        img.onerror = () => resolve(file);
+                                        img.src = event.target.result;
+                                    };
+                                    reader.onerror = () => resolve(file);
+                                    reader.readAsDataURL(file);
+                                });
+                            }
+
+                            progressBar.style.width = '50%';
+                            statusText.textContent = '50%';
+
+                            const fileExt = fileToUpload.name.split('.').pop();
+                            const fileName = `${Date.now()}-${currentUser.id}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
+
+                            const { data: uploadData, error: uploadError } = await supabase.storage
+                                .from('files')
+                                .upload(fileName, fileToUpload, {
+                                    cacheControl: '3600',
+                                    upsert: false
+                                });
+
+                            if (uploadError) {
+                                statusText.textContent = 'Failed';
+                                progressBar.style.background = 'var(--error)';
+                                await new Promise(resolve => setTimeout(resolve, 1000));
+                                continue;
+                            }
+
+                            if (uploadData) {
+                                const { data: { publicUrl } } = supabase.storage
+                                    .from('files')
+                                    .getPublicUrl(fileName);
+                                uploadedFiles.push({
+                                    url: publicUrl,
+                                    name: file.name,
+                                    type: file.type,
+                                    size: file.size
+                                });
+
+                                progressBar.style.width = '100%';
+                                statusText.textContent = '100%';
+                                await new Promise(resolve => setTimeout(resolve, 300));
+                            }
+                        } catch (error) {
+                            statusText.textContent = 'Error';
+                            progressBar.style.background = 'var(--error)';
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                        }
+                    }
+                }
+
+                if (uploadedFiles.length > 0) {
+                    messageData.files = uploadedFiles;
+                }
+
+                pendingFiles = [];
+                renderFilePreview();
+            }
+
+            const { data, error } = await supabaseClient.from('server_messages').insert(messageData).select().single();
 
             if (error) throw error;
 
@@ -3327,39 +3180,145 @@ document.addEventListener('DOMContentLoaded', () => {
             created_at: new Date().toISOString()
         };
 
+        let loadingOverlay = null;
+
         if (pendingFiles.length > 0) {
+            const filePreview = document.getElementById('file-attachment-preview');
+            if (!filePreview) return;
+
             const uploadedFiles = [];
+            const totalFiles = pendingFiles.length;
 
-            for (const file of pendingFiles) {
-                try {
-                    const fileExt = file.name.split('.').pop();
-                    const fileName = `${Date.now()}-${currentUser.id}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
-                    const { data: uploadData, error: uploadError } = await supabase.storage
-                        .from('files')
-                        .upload(fileName, file, {
-                            cacheControl: '3600',
-                            upsert: false
-                        });
+            for (let i = 0; i < pendingFiles.length; i++) {
+                const file = pendingFiles[i];
+                const fileItem = filePreview.children[totalFiles - 1 - i];
 
-                    if (uploadError) {
-                        continue;
-                    }
-                    if (uploadData) {
-                        const { data: { publicUrl } } = supabase.storage
+                if (fileItem) {
+                    const overlay = document.createElement('div');
+                    overlay.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.7);
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                border-radius: var(--button-border-radius);
+                z-index: 10;
+            `;
+                    overlay.innerHTML = `
+                <div style="color: white; font-size: 0.75rem; margin-bottom: 0.5rem;">Uploading...</div>
+                <div style="width: 80%; height: 3px; background: rgba(255,255,255,0.3); border-radius: 2px; overflow: hidden;">
+                    <div class="upload-progress-bar" style="height: 100%; background: var(--primary-accent); width: 0%; transition: width 0.3s ease;"></div>
+                </div>
+                <div class="upload-status" style="color: white; font-size: 0.65rem; margin-top: 0.25rem;">0%</div>
+            `;
+                    fileItem.appendChild(overlay);
+
+                    const progressBar = overlay.querySelector('.upload-progress-bar');
+                    const statusText = overlay.querySelector('.upload-status');
+
+                    try {
+                        let fileToUpload = file;
+
+                        if (file.type.startsWith('image/') && file.size > 5 * 1024 * 1024) {
+                            statusText.textContent = 'Compressing...';
+                            await new Promise(resolve => setTimeout(resolve, 200));
+                            fileToUpload = await new Promise((resolve, reject) => {
+                                const reader = new FileReader();
+                                reader.onload = (event) => {
+                                    const img = new Image();
+                                    img.onload = () => {
+                                        const canvas = document.createElement('canvas');
+                                        const MAX_WIDTH = 1920;
+                                        const MAX_HEIGHT = 1920;
+                                        let width = img.width;
+                                        let height = img.height;
+
+                                        if (width > height) {
+                                            if (width > MAX_WIDTH) {
+                                                height *= MAX_WIDTH / width;
+                                                width = MAX_WIDTH;
+                                            }
+                                        } else {
+                                            if (height > MAX_HEIGHT) {
+                                                width *= MAX_HEIGHT / height;
+                                                height = MAX_HEIGHT;
+                                            }
+                                        }
+
+                                        canvas.width = width;
+                                        canvas.height = height;
+                                        const ctx = canvas.getContext('2d');
+                                        ctx.drawImage(img, 0, 0, width, height);
+
+                                        canvas.toBlob((blob) => {
+                                            if (blob) {
+                                                resolve(new File([blob], file.name, { type: 'image/jpeg' }));
+                                            } else {
+                                                resolve(file);
+                                            }
+                                        }, 'image/jpeg', 0.8);
+                                    };
+                                    img.onerror = () => resolve(file);
+                                    img.src = event.target.result;
+                                };
+                                reader.onerror = () => resolve(file);
+                                reader.readAsDataURL(file);
+                            });
+                        }
+
+                        progressBar.style.width = '50%';
+                        statusText.textContent = '50%';
+
+                        const fileExt = fileToUpload.name.split('.').pop();
+                        const fileName = `${Date.now()}-${currentUser.id}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
+
+                        const { data: uploadData, error: uploadError } = await supabase.storage
                             .from('files')
-                            .getPublicUrl(fileName);
-                        uploadedFiles.push({
-                            url: publicUrl,
-                            name: file.name,
-                            type: file.type,
-                            size: file.size
-                        });
+                            .upload(fileName, fileToUpload, {
+                                cacheControl: '3600',
+                                upsert: false
+                            });
+
+                        if (uploadError) {
+                            statusText.textContent = 'Failed';
+                            progressBar.style.background = 'var(--error)';
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                            continue;
+                        }
+
+                        if (uploadData) {
+                            const { data: { publicUrl } } = supabase.storage
+                                .from('files')
+                                .getPublicUrl(fileName);
+                            uploadedFiles.push({
+                                url: publicUrl,
+                                name: file.name,
+                                type: file.type,
+                                size: file.size
+                            });
+
+                            progressBar.style.width = '100%';
+                            statusText.textContent = '100%';
+                            await new Promise(resolve => setTimeout(resolve, 300));
+                        }
+                    } catch (error) {
+                        statusText.textContent = 'Error';
+                        progressBar.style.background = 'var(--error)';
+                        await new Promise(resolve => setTimeout(resolve, 1000));
                     }
-                } catch (error) {
                 }
             }
+
             if (uploadedFiles.length > 0) {
                 messageData.files = uploadedFiles;
+            } else {
+                showInfoModal('Upload Failed', 'Failed to upload files. Please try again.');
+                return;
             }
 
             pendingFiles = [];
@@ -3367,33 +3326,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (content) {
-            const recipientPublicKeyStr = currentChatFriend.public_key;
-
-            if (recipientPublicKeyStr && userKeys.privateKey && userKeys.publicKey) {
-                try {
-                    const recipientPublicKey = await CryptoHelper.importPublicKey(recipientPublicKeyStr);
-
-                    const encryptedForRecipient = await CryptoHelper.encryptMessage(content, recipientPublicKey);
-                    messageData.encrypted_content = encryptedForRecipient.encryptedMessage;
-                    messageData.encrypted_key = encryptedForRecipient.encryptedKey;
-                    messageData.iv = encryptedForRecipient.iv;
-
-                    const encryptedForSender = await CryptoHelper.encryptMessage(content, userKeys.publicKey);
-                    messageData.sender_encrypted_content = encryptedForSender.encryptedMessage;
-                    messageData.sender_encrypted_key = encryptedForSender.encryptedKey;
-                    messageData.sender_iv = encryptedForSender.iv;
-
-                    messageData.is_encrypted = true;
-                    messageData.content = '';
-                } catch (error) {
-                    messageData.content = content;
-                    messageData.is_encrypted = false;
-                }
-            } else {
-                messageData.content = content;
-                messageData.is_encrypted = false;
-            }
-        } else if (pendingFiles.length === 0) {
+            messageData.content = content;
+        } else if (!messageData.files || messageData.files.length === 0) {
             return;
         }
 
@@ -3405,26 +3339,16 @@ document.addEventListener('DOMContentLoaded', () => {
         ui.messageInput.value = '';
         replyingTo = null;
         ui.replyPreview.classList.add('hidden');
+
         const { data: insertedMessage, error } = await supabase
             .from('messages')
             .insert([messageData])
             .select()
             .single();
+
         if (error) {
             showInfoModal('Error', 'Failed to send message. Please try again.');
             return;
-        }
-
-        if (insertedMessage.is_encrypted && insertedMessage.sender_encrypted_content) {
-            try {
-                insertedMessage.content = await CryptoHelper.decryptMessage({
-                    encryptedMessage: insertedMessage.sender_encrypted_content,
-                    encryptedKey: insertedMessage.sender_encrypted_key,
-                    iv: insertedMessage.sender_iv
-                }, userKeys.privateKey);
-            } catch (error) {
-                insertedMessage.content = '[Unable to decrypt]';
-            }
         }
 
         displayMessage(insertedMessage, currentUser);
@@ -3614,9 +3538,14 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     ui.backToFriendsBtn.onclick = () => {
+        currentServer = null;
+        currentChatFriend = null;
+        currentChatType = 'friend';
         updateURLPath('messages');
         ui.sidebar.classList.remove('hidden');
         ui.chatContainer.classList.remove('active');
+        ui.welcomeScreen.classList.remove('hidden');
+        ui.chatView.classList.add('hidden');
 
         if (window.innerWidth <= 768) {
             ui.navbarInSidebar.classList.remove('hidden');
@@ -4839,7 +4768,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const handleRouting = () => {
         const path = window.location.pathname;
         const parts = path.split('/').filter(Boolean);
-
         if (parts.length === 0) {
             switchTab('personal');
             return;
@@ -4847,7 +4775,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const route = parts[0];
         const id = parts[1];
-
         switch (route) {
             case 'personal':
                 switchTab('personal');
@@ -4857,21 +4784,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
             case 'chat':
                 if (id && friends[id]) {
-                    switchTab('personal');
+                    if (currentTab !== 'personal') {
+                        switchTab('personal');
+                    }
                     setTimeout(() => {
                         window.openChat(id, 'friend');
-                    }, 500);
+                    }, currentTab !== 'personal' ? 500 : 100);
+                } else {
+                    switchTab('personal');
                 }
                 break;
             case 'server':
                 if (id) {
-                    switchTab('global');
+                    const server = servers.find(s => s.id === id);
+                    if (currentTab !== 'global') {
+                        switchTab('global');
+                    }
                     setTimeout(async () => {
-                        const server = servers.find(s => s.id === id);
                         if (server) {
                             await openServerChat(server);
                         }
-                    }, 500);
+                    }, currentTab !== 'global' ? 500 : 100);
+                } else {
+                    switchTab('global');
                 }
                 break;
             case 'friend-requests':
