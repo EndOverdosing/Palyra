@@ -1,5 +1,5 @@
 :root {
-    --primary-accent: #ffffff;
+    --primary-accent: #c4c4c4;
     --primary-bg: #fefefe;
     --secondary-bg: #f2f2f2;
     --secondary-bg-rgb: 242, 242, 242, 0.5;
@@ -955,7 +955,7 @@ button.secondary:hover {
 
 .message.sent .message-content {
     background-color: var(--primary-accent);
-    color: white;
+    color: var(--primary-text);
     border-bottom-right-radius: 4px;
 }
 
