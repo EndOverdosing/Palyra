@@ -31,7 +31,7 @@
 :root[data-theme="dark"] {
     --primary-accent: #1a1a1a;
     --primary-bg: #000000;
-    --secondary-bg: #0d0d0d;
+    --secondary-bg: #090909;
     --secondary-bg-rgb: 13, 13, 13, 0.5;
     --tertiary-bg: #141414;
     --tertiary-bg-rgb: 3, 3, 3, 0.5;
@@ -4064,4 +4064,63 @@ body[data-font-size="large"] {
     opacity: 1;
     transform: scale(1.05);
     transition: transform 0.2s ease;
+}
+
+.message-reply-context {
+    background: var(--secondary-bg);
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.5rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    transition: var(--transition-fast);
+    cursor: pointer;
+    max-width: 100%;
+}
+
+.message-reply-context:hover {
+    background: var(--secondary-bg);
+}
+
+.message-reply-content {
+    flex: 1;
+    overflow: hidden;
+    min-width: 0;
+}
+
+.message-reply-author {
+    font-weight: 600;
+    color: var(--primary-text);
+    font-size: 0.8rem;
+    margin-bottom: 0.1rem;
+    display: block;
+}
+
+.message-reply-text {
+    color: var(--secondary-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.3;
+    word-wrap: break-word;
+    white-space: normal;
+}
+
+.message-content.message-highlight {
+    animation: messageHighlight 0.5s ease-out forwards;
+}
+
+@keyframes messageHighlight {
+    0% {
+        background-color: var(--primary-accent);
+    }
+
+    100% {
+        background-color: var(--secondary-bg);
+    }
 }

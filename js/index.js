@@ -504,15 +504,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const userPromises = userIds.map(async (userId) => {
                 const { data: userData } = await supabaseClient
                     .from(currentUser.table_name || 'profiles')
-                    .select('username')
+                    .select('username, avatar_url')
                     .eq('id', userId)
                     .single();
-                return { userId, username: userData?.username };
+                return { userId, username: userData?.username, avatar_url: userData?.avatar_url };
             });
 
             const userResults = await Promise.all(userPromises);
-            const userMap = userResults.reduce((acc, { userId, username }) => {
-                acc[userId] = username || 'Unknown';
+            const userMap = userResults.reduce((acc, { userId, username, avatar_url }) => {
+                acc[userId] = { username: username || 'Unknown', avatar_url };
                 return acc;
             }, {});
 
@@ -2175,7 +2175,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const fragment = document.createDocumentFragment();
 
         messages.forEach(msg => {
-            const messageDiv = createServerMessageElement(msg, userMap[msg.user_id] || 'Unknown');
+            const userInfo = userMap[msg.user_id] || { username: 'Unknown', avatar_url: null };
+            const messageDiv = createServerMessageElement({ ...msg, avatar_url: userInfo.avatar_url }, userInfo.username);
             fragment.appendChild(messageDiv);
         });
 
@@ -2211,6 +2212,24 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
+    const scrollToMessage = (messageId) => {
+        const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+        if (messageElement) {
+            messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            const messageContent = messageElement.querySelector('.message-content');
+            if (messageContent) {
+                messageContent.classList.add('message-highlight');
+
+                setTimeout(() => {
+                    messageContent.classList.remove('message-highlight');
+                }, 1000);
+            }
+        }
+    };
+
+    window.scrollToMessage = scrollToMessage;
+
     const createMessageElement = (message, sender) => {
 
         const messageDiv = document.createElement('div');
@@ -2224,7 +2243,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (message.reply_to_id) {
             const replyText = message.reply_to_content || 'Original message';
-            content += `<div class="message-reply-context" style="background: rgba(88, 101, 242, 0.1); padding: 0.5rem; border-left: 3px solid var(--primary-accent); margin-bottom: 0.5rem; border-radius: 4px; font-size: 0.85rem;"><i class="fa-solid fa-reply"></i> ${escapeHtml(replyText.substring(0, 50))}${replyText.length > 50 ? '...' : ''}</div>`;
+            content += `<div class="message-reply-context" onclick="scrollToMessage('${message.reply_to_id}')">
+    <div class="message-reply-content">
+        <span class="message-reply-author">${message.sender_id === currentUser.id ? 'You' : (currentChatFriend?.username || 'User')}</span>
+        <span class="message-reply-text">${escapeHtml(replyText)}</span>
+    </div>
+</div>`;
         }
 
         if (message.files && Array.isArray(message.files) && message.files.length > 0) {
@@ -2317,9 +2341,6 @@ document.addEventListener('DOMContentLoaded', () => {
             showMessageContextMenu(e, message);
         });
 
-        let lastTap = 0;
-        const DOUBLE_TAP_DELAY = 300;
-
         messageDiv.addEventListener('touchend', (e) => {
             const currentTime = new Date().getTime();
             const tapLength = currentTime - lastTap;
@@ -2347,7 +2368,39 @@ document.addEventListener('DOMContentLoaded', () => {
         if (message.reactions) {
             renderReactions(message.id, message.reactions);
         }
+
+        messageDiv.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            showMessageContextMenu(e, msg);
+        });
+
+        messageDiv.addEventListener('touchend', (e) => {
+            const currentTime = new Date().getTime();
+            const tapLength = currentTime - lastTap;
+
+            if (tapLength < DOUBLE_TAP_DELAY && tapLength > 0) {
+                e.preventDefault();
+                const touch = e.changedTouches[0];
+                const event = new MouseEvent('contextmenu', {
+                    clientX: touch.clientX,
+                    clientY: touch.clientY,
+                    bubbles: true,
+                    cancelable: true
+                });
+                messageDiv.dispatchEvent(event);
+            }
+            lastTap = currentTime;
+        }, { passive: false });
+
         return messageDiv;
+    };
+
+    window.replyToServerMessage = (messageId, content) => {
+        replyingTo = { id: messageId, content, type: 'server' };
+        const displayText = content && content.trim() ? content : 'File';
+        ui.replyPreviewText.textContent = displayText.substring(0, 100);
+        ui.replyPreview.classList.remove('hidden');
+        ui.messageInput.focus();
     };
 
     function createServerMessageElement(msg, username) {
@@ -2359,6 +2412,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const isSent = msg.user_id === currentUser.id;
 
         let content = '';
+
+        if (msg.reply_to_id) {
+            const replyText = msg.reply_to_content || 'Original message';
+            content += `<div class="message-reply-context" onclick="scrollToMessage('${msg.reply_to_id}')">
+    <div class="message-reply-content">
+        <span class="message-reply-author">${msg.user_id === currentUser.id ? 'You' : username}</span>
+        <span class="message-reply-text">${escapeHtml(replyText)}</span>
+    </div>
+</div>`;
+        }
+
+        if (msg.content) {
+            content += `<div class="message-content">${escapeHtml(msg.content)}</div>`;
+        }
 
         if (msg.files && Array.isArray(msg.files) && msg.files.length > 0) {
             msg.files.forEach(file => {
@@ -2379,11 +2446,12 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        if (msg.content) {
-            content += `<div class="message-content">${escapeHtml(msg.content)}</div>`;
-        }
-
         const timestamp = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        const userInitials = username.substring(0, 2).toUpperCase();
+        const avatarHtml = msg.avatar_url ?
+            `<img src="${msg.avatar_url}" alt="${username}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">` :
+            userInitials;
 
         if (isMobile) {
             const timestampDiv = document.createElement('div');
@@ -2401,23 +2469,69 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
             const contentWrapper = document.createElement('div');
-            contentWrapper.innerHTML = `
-            ${msg.user_id !== currentUser.id ? `<strong>${username}</strong><br>` : ''}
-            ${content}
-        `;
-            contentWrapper.style.cssText = 'position: relative;';
+            contentWrapper.style.cssText = 'position: relative; display: flex; gap: 0.5rem;';
+
+            if (!isSent) {
+                contentWrapper.innerHTML = `
+                <div class="server-message-avatar" style="width: 32px; height: 32px; border-radius: 50%; background: var(--tertiary-bg); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.75rem; font-weight: 600;">${avatarHtml}</div>
+                <div style="flex: 1;">
+                    <strong style="font-size: 0.9rem;">${username}</strong>
+                    <div>${content}</div>
+                </div>
+            `;
+            } else {
+                contentWrapper.innerHTML = `<div>${content}</div>`;
+            }
 
             messageDiv.appendChild(contentWrapper);
             messageDiv.appendChild(timestampDiv);
 
             setupMessageSwipe(contentWrapper, isSent);
         } else {
-            messageDiv.innerHTML = `
-            ${msg.user_id !== currentUser.id ? `<strong>${username}</strong><br>` : ''}
-            ${content}
-            <span class="message-time" style="font-size: 0.7rem; color: var(--secondary-text); margin-top: 0.25rem; display: block; text-align: ${isSent ? 'right' : 'left'};">${timestamp}</span>
-        `;
+            if (!isSent) {
+                messageDiv.innerHTML = `
+                <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                    <div class="server-message-avatar" style="width: 32px; height: 32px; border-radius: 50%; background: var(--tertiary-bg); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.75rem; font-weight: 600;">${avatarHtml}</div>
+                    <div style="flex: 1;">
+                        <strong style="font-size: 0.9rem;">${username}</strong>
+                        <div>${content}</div>
+                        <span class="message-time" style="font-size: 0.7rem; color: var(--secondary-text); margin-top: 0.25rem; display: block;">${timestamp}</span>
+                    </div>
+                </div>
+            `;
+            } else {
+                messageDiv.innerHTML = `
+                <div>${content}</div>
+                <span class="message-time" style="font-size: 0.7rem; color: var(--secondary-text); margin-top: 0.25rem; display: block; text-align: right;">${timestamp}</span>
+            `;
+            }
         }
+        messageDiv.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            showMessageContextMenu(e, msg);
+        });
+
+        let lastTap = 0;
+        const DOUBLE_TAP_DELAY = 300;
+
+        messageDiv.addEventListener('touchend', (e) => {
+            const currentTime = new Date().getTime();
+            const tapLength = currentTime - lastTap;
+
+            if (tapLength < DOUBLE_TAP_DELAY && tapLength > 0) {
+                e.preventDefault();
+                const touch = e.changedTouches[0];
+                const event = new MouseEvent('contextmenu', {
+                    clientX: touch.clientX,
+                    clientY: touch.clientY,
+                    bubbles: true,
+                    cancelable: true
+                });
+                messageDiv.dispatchEvent(event);
+            }
+            lastTap = currentTime;
+        }, { passive: false });
 
         return messageDiv;
     }
@@ -2502,6 +2616,25 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
+    window.editServerMessage = (messageId, content) => {
+        editingMessage = { id: messageId, type: 'server' };
+        ui.editMessageInput.value = content;
+        showModal(ui.editMessageModal);
+    };
+
+    window.deleteServerMessage = async (messageId) => {
+        showConfirmationModal('Delete this message?', 'This action cannot be undone.', async () => {
+            const { error } = await supabaseClient.from('server_messages').delete().eq('id', messageId);
+
+            if (error) {
+                showInfoModal('Error', 'Failed to delete message.');
+                return;
+            }
+
+            removeMessageFromUI(messageId);
+        });
+    };
+
     const showMessageContextMenu = (e, message) => {
         e.preventDefault();
         e.stopPropagation();
@@ -2515,8 +2648,7 @@ document.addEventListener('DOMContentLoaded', () => {
         menu.className = 'context-menu';
 
         const isMobile = window.innerWidth <= 768;
-        const isSentMessage = message.sender_id === currentUser.id;
-
+        const isSentMessage = message.sender_id === currentUser.id || message.user_id === currentUser.id;
         if (isMobile) {
             menu.style.cssText = `
             position: fixed;
@@ -2571,16 +2703,43 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         }
 
-        const items = [
-            { icon: 'fa-reply', text: 'Reply', action: () => window.replyToMessage(message.id, message.content || 'File') },
-            { icon: 'fa-face-smile', text: 'React', action: () => window.addReaction(message.id) }
-        ];
+        const items = [];
 
-        if (isSentMessage) {
-            if (message.content) {
-                items.push({ icon: 'fa-edit', text: 'Edit', action: () => window.editMessage(message.id, message.content) });
+        if (currentChatType === 'friend') {
+            items.push(
+                { icon: 'fa-reply', text: 'Reply', action: () => window.replyToMessage(message.id, message.content || 'File') },
+                { icon: 'fa-face-smile', text: 'React', action: () => window.addReaction(message.id) }
+            );
+
+            if (isSentMessage) {
+                if (message.content) {
+                    items.push({ icon: 'fa-edit', text: 'Edit', action: () => window.editMessage(message.id, message.content) });
+                }
+                items.push({ icon: 'fa-trash', text: 'Delete', action: () => window.deleteMessage(message.id), danger: true });
             }
-            items.push({ icon: 'fa-trash', text: 'Delete', action: () => window.deleteMessage(message.id), danger: true });
+        } else if (currentChatType === 'server') {
+            items.push({ icon: 'fa-reply', text: 'Reply', action: () => window.replyToServerMessage(message.id, message.content || 'File') });
+            items.push({
+                icon: 'fa-copy', text: 'Copy Text', action: () => {
+                    if (message.content) {
+                        navigator.clipboard.writeText(message.content).then(() => {
+                            showInfoModal('Copied', 'Message copied to clipboard');
+                        }).catch(() => {
+                            showInfoModal('Error', 'Failed to copy message');
+                        });
+                    }
+                }
+            });
+
+            if (isSentMessage && message.content) {
+                items.push({ icon: 'fa-edit', text: 'Edit', action: () => window.editServerMessage(message.id, message.content) });
+            }
+            if (isSentMessage) {
+                items.push({ icon: 'fa-trash', text: 'Delete', action: () => window.deleteServerMessage(message.id), danger: true });
+            }
+        }
+        if (items.length === 0) {
+            return;
         }
 
         items.forEach(item => {
@@ -2618,7 +2777,7 @@ document.addEventListener('DOMContentLoaded', () => {
             left: 0;
             right: 0;
             bottom: 0;
-            background: var(--primary-bg)
+            background: var(--primary-bg);
             z-index: 10001;
             animation: fadeIn 0.3s ease-out;
         `;
@@ -2630,7 +2789,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         document.body.appendChild(menu);
-
         const closeMenu = (ev) => {
             if (!menu.contains(ev.target)) {
                 menu.remove();
@@ -2705,6 +2863,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.head.appendChild(style);
 
     ui.cancelReplyBtn.onclick = () => {
+        ui.messageInput.value = '';
         replyingTo = null;
         ui.replyPreview.classList.add('hidden');
     };
@@ -2719,6 +2878,23 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         const newContent = ui.editMessageInput.value.trim();
         if (!newContent || !editingMessage) return;
+
+        if (editingMessage.type === 'server') {
+            const { error } = await supabaseClient.from('server_messages').update({
+                content: newContent,
+                edited: true
+            }).eq('id', editingMessage.id);
+
+            if (error) {
+                showInfoModal('Error', 'Failed to edit message.');
+                return;
+            }
+
+            updateMessageInUI({ id: editingMessage.id, content: newContent, edited: true });
+            editingMessage = null;
+            hideModal();
+            return;
+        }
 
         const { data: message } = await supabase
             .from('messages')
@@ -2855,7 +3031,7 @@ document.addEventListener('DOMContentLoaded', () => {
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: var(--secondary-bg);
+        background: rgba(var(--secondary-bg-rgb));
         padding: 1rem;
         border-radius: var(--card-border-radius);
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
@@ -3033,6 +3209,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 content,
                 created_at: new Date().toISOString()
             };
+
+            if (replyingTo && replyingTo.type === 'server') {
+                messageData.reply_to_id = replyingTo.id;
+                messageData.reply_to_content = replyingTo.content;
+            }
 
             if (pendingFiles.length > 0) {
                 const filePreview = document.getElementById('file-attachment-preview');
