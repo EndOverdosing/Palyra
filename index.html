@@ -4,25 +4,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Pylara - Secure, decentralized, real-time communication.">
+    <meta name="description" content="Palyra - Secure, decentralized, real-time communication.">
     <meta property="og:image" content="/images/banner.png" />
-    <meta property="og:title" content="Pylara" />
-    <meta property="og:description" content="Pylara - Secure, decentralized, real-time communication.">
-    <meta property="og:url" content="https://pylara.vercel.app/">
+    <meta property="og:title" content="Palyra" />
+    <meta property="og:description" content="Palyra - Secure, decentralized, real-time communication.">
+    <meta property="og:url" content="https://Palyra.vercel.app/">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Pylara">
-    <meta name="twitter:description" content="Pylara - Secure, decentralized, real-time communication.">
+    <meta name="twitter:title" content="Palyra">
+    <meta name="twitter:description" content="Palyra - Secure, decentralized, real-time communication.">
     <meta name="twitter:image" content="/images/banner.png">
 
     <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="format-detection" content="telephone=no">
 
-    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="transparent" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="transparent" media="(prefers-color-scheme: light)">
 
-    <title>Pylara</title>
-    <link rel="icon" href="/images/icon.png">
+    <title>Palyra</title>
+    <link rel="icon" href="/images/favicon.ico">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/styling/index.css">
 
@@ -32,7 +33,7 @@
 <body>
     <div id="auth-container" class="hidden">
         <div class="auth-card">
-            <h1 class="auth-title">Pylara</h1>
+            <h1 class="auth-title">Palyra</h1>
             <p class="auth-subtitle">Secure, real-time communication.</p>
             <div id="auth-forms">
                 <form id="login-form">
@@ -75,6 +76,10 @@
                     <span id="username-display"></span>
                 </div>
                 <div class="sidebar-header-actions">
+                    <button id="notifications-btn" title="Notifications" class="notification-btn-wrapper">
+                        <i class="fa-solid fa-bell"></i>
+                        <span id="notifications-badge" class="notifications-badge hidden">0</span>
+                    </button>
                     <button id="add-friend-btn" title="Add Friend"><i class="fa-solid fa-user-plus"></i></button>
                     <button id="settings-btn" title="Settings"><i class="fa-solid fa-gear"></i></button>
                     <button id="logout-btn" title="Logout"><i class="fa-solid fa-right-from-bracket"></i></button>
@@ -126,7 +131,13 @@
                 </header>
                 <div id="messages-container"></div>
                 <div id="typing-indicator" class="hidden">
-                    <span>Typing...</span>
+                    <div class="typing-bubble">
+                        <div class="typing-dots">
+                            <span class="typing-dot"></span>
+                            <span class="typing-dot"></span>
+                            <span class="typing-dot"></span>
+                        </div>
+                    </div>
                 </div>
                 <div id="reply-preview" class="hidden">
                     <div class="reply-preview-content">
@@ -144,9 +155,6 @@
                         </button>
                         <textarea id="message-input" placeholder="Type a message..." autocomplete="off"
                             rows="1"></textarea>
-                        <button type="submit" title="Send Message">
-                            <i class="fa-solid fa-paper-plane"></i>
-                        </button>
                     </div>
                 </form>
             </div>
@@ -164,6 +172,16 @@
                     <input type="text" id="friend-username-input" placeholder="Username..." autocomplete="off">
                     <button type="submit">Send Request</button>
                 </form>
+            </div>
+
+            <div id="blocked-users-modal" class="hidden">
+                <h2>Blocked Users</h2>
+                <div id="blocked-users-list"></div>
+            </div>
+
+            <div id="notifications-modal" class="hidden">
+                <h2>Notifications</h2>
+                <div id="notifications-list"></div>
             </div>
 
             <div id="friend-requests-modal" class="hidden">
@@ -393,6 +411,15 @@
                                 <span class="toggle-slider"></span>
                                 <span class="toggle-label">Read Receipts</span>
                             </label>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <h3>Blocked Users</h3>
+                        <div class="setting-item">
+                            <button id="view-blocked-users-btn" class="secondary-btn"
+                                style="width: 100%; padding: 0.75rem;">
+                                <i class="fa-solid fa-ban"></i> Manage Blocked Users
+                            </button>
                         </div>
                     </div>
                 </div>

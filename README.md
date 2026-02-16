@@ -1,6 +1,6 @@
 ![Logo](/public/images/background.png)
 
-# Pylara Communicator
+# Palyra Communicator
 
 A secure, decentralized, and real-time communication application that facilitates direct peer-to-peer connections for video, audio, and text chat without a central server.
 

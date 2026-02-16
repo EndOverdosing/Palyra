@@ -31,6 +31,8 @@ document.addEventListener('DOMContentLoaded', () => {
         logoutBtn: document.getElementById('logout-btn'),
         settingsBtn: document.getElementById('settings-btn'),
         addFriendBtn: document.getElementById('add-friend-btn'),
+        notificationsBtn: document.getElementById('notifications-btn'),
+        notificationsBadge: document.getElementById('notifications-badge'),
         chatContainer: document.getElementById('chat-container'),
         welcomeScreen: document.getElementById('welcome-screen'),
         chatView: document.getElementById('chat-view'),
@@ -131,15 +133,18 @@ document.addEventListener('DOMContentLoaded', () => {
         contentList: document.getElementById('content-list'),
         searchInput: document.getElementById('search-input'),
         navbarInSidebar: document.getElementById('navbar-in-sidebar'),
+        notificationsModal: document.getElementById('notifications-modal'),
+        viewBlockedUsersBtn: document.getElementById('view-blocked-users-btn'),
+        blockedUsersModal: document.getElementById('blocked-users-modal'),
+        blockedUsersList: document.getElementById('blocked-users-list'),
     };
 
-    let peer, localStream, dataConnection, mediaConnection, currentUser, currentChatFriend, friends = {}, subscriptions = [];
+    let peer, localStream, mediaConnection, currentUser, currentChatFriend, friends = {}, subscriptions = [];
     let callState = { isMuted: false, isVideoEnabled: true, isScreenSharing: false };
     let incomingCallData = null;
     let onlineUsers = new Set();
     let incomingCallTimeout = null;
     let isInCall = false;
-    let typingTimeout = null;
 
     let currentTab = 'personal';
     let servers = [];
@@ -151,7 +156,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let blockedUsers = new Set();
     let friendRequests = [];
     let replyingTo = null;
-    let editingMessage = null;
     let pendingFiles = [];
     let conversations = [];
 
@@ -164,6 +168,651 @@ document.addEventListener('DOMContentLoaded', () => {
         readReceipts: true
     };
 
+    let notifications = [];
+    let unreadNotificationsCount = 0;
+
+    const URL_REGEX = /(https?:\/\/[^\s]+)/g;
+
+    ui.notificationsBtn?.addEventListener('click', async () => {
+        await loadNotifications();
+        renderNotifications();
+        showModal(ui.notificationsModal);
+    });
+
+    async function loadNotifications() {
+        try {
+            const { data, error } = await supabase
+                .from('notifications')
+                .select(`
+                *,
+                from_user:profiles!notifications_from_user_id_fkey(id, username, avatar_url)
+            `)
+                .eq('user_id', currentUser.id)
+                .order('created_at', { ascending: false })
+                .limit(50);
+
+            if (error) throw error;
+
+            notifications = data || [];
+            unreadNotificationsCount = notifications.filter(n => !n.read).length;
+            updateNotificationsBadge();
+        } catch (error) {
+        }
+    }
+
+    function updateNotificationsBadge() {
+        const badge = ui.notificationsBadge || document.getElementById('notifications-badge');
+        if (badge) {
+            if (unreadNotificationsCount > 0) {
+                badge.textContent = unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+    }
+
+    function renderNotifications() {
+        const list = document.getElementById('notifications-list');
+        if (!list) return;
+
+        list.innerHTML = '';
+
+        if (notifications.length === 0) {
+            return;
+        }
+
+        notifications.forEach(notification => {
+            const item = createNotificationElement(notification);
+            list.appendChild(item);
+        });
+    }
+
+    function createNotificationElement(notification) {
+        const div = document.createElement('div');
+        div.className = `notification-item ${!notification.read ? 'unread' : ''}`;
+        div.dataset.notificationId = notification.id;
+
+        const fromUser = notification.from_user;
+        if (!fromUser) return div;
+
+        const avatar = document.createElement('div');
+        avatar.className = 'notification-avatar';
+        if (fromUser.avatar_url) {
+            avatar.innerHTML = `<img src="${fromUser.avatar_url}" alt="${fromUser.username}">`;
+        } else {
+            avatar.textContent = fromUser.username[0].toUpperCase();
+        }
+
+        const content = document.createElement('div');
+        content.className = 'notification-content';
+
+        const text = document.createElement('div');
+        text.className = 'notification-text';
+
+        const time = document.createElement('div');
+        time.className = 'notification-time';
+        time.textContent = formatTimeAgo(notification.created_at);
+
+        if (notification.type === 'friend_request') {
+            text.innerHTML = `<strong>${fromUser.username}</strong> sent you a friend request`;
+
+            content.appendChild(text);
+            content.appendChild(time);
+        } else if (notification.type === 'message') {
+            text.innerHTML = `<strong>${fromUser.username}</strong> sent you a message`;
+
+            if (notification.content) {
+                const preview = document.createElement('div');
+                preview.style.cssText = 'font-size: 0.85rem; color: var(--secondary-text); margin-top: 0.25rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
+                preview.textContent = notification.content;
+                content.appendChild(text);
+                content.appendChild(preview);
+                content.appendChild(time);
+            } else {
+                content.appendChild(text);
+                content.appendChild(time);
+            }
+
+            div.onclick = async () => {
+                await markNotificationAsRead(notification.id);
+                if (friends[fromUser.id]) {
+                    closeAllModals();
+                    await switchTab('personal');
+                    setTimeout(() => {
+                        window.openChat(fromUser.id, 'friend');
+                    }, 100);
+                }
+            };
+        }
+
+        div.appendChild(avatar);
+        div.appendChild(content);
+
+        if (!notification.read) {
+            div.onclick = async (e) => {
+                if (!e.target.closest('.notification-actions')) {
+                    await markNotificationAsRead(notification.id);
+                }
+            };
+        }
+
+        return div;
+    }
+
+    async function markNotificationAsRead(notificationId) {
+        try {
+            const { error } = await supabase
+                .from('notifications')
+                .update({ read: true })
+                .eq('id', notificationId);
+
+            if (error) throw error;
+
+            const notification = notifications.find(n => n.id === notificationId);
+            if (notification) {
+                notification.read = true;
+                unreadNotificationsCount = Math.max(0, unreadNotificationsCount - 1);
+                updateNotificationsBadge();
+                renderNotifications();
+            }
+        } catch (error) {
+        }
+    }
+
+    async function acceptFriendRequestFromNotification(friendshipId, notificationId) {
+        try {
+            const { error } = await supabase
+                .from('friendships')
+                .update({ status: 'accepted' })
+                .eq('id', friendshipId);
+
+            if (error) throw error;
+
+            await markNotificationAsRead(notificationId);
+            await loadFriends();
+            await updateConversationsList();
+            renderNotifications();
+        } catch (error) {
+            showInfo('Error', 'Failed to accept friend request');
+        }
+    }
+
+    async function declineFriendRequestFromNotification(friendshipId, notificationId) {
+        try {
+            const { error } = await supabase
+                .from('friendships')
+                .delete()
+                .eq('id', friendshipId);
+
+            if (error) throw error;
+
+            await markNotificationAsRead(notificationId);
+            renderNotifications();
+        } catch (error) {
+            showInfo('Error', 'Failed to decline friend request');
+        }
+    }
+
+    function subscribeToNotifications() {
+        if (!currentUser || !currentUser.id) return;
+        const channel = supabase
+            .channel(`notifications-${currentUser.id}`)
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'notifications',
+                filter: `user_id=eq.${currentUser.id}`
+            }, async (payload) => {
+                const { data: fromUser } = await supabase
+                    .from('profiles')
+                    .select('id, username, avatar_url')
+                    .eq('id', payload.new.from_user_id)
+                    .single();
+                const notification = { ...payload.new, from_user: fromUser };
+                notifications.unshift(notification);
+                unreadNotificationsCount++;
+                updateNotificationsBadge();
+
+                if (userSettings.notifications && 'Notification' in window && Notification.permission === 'granted') {
+                    let notifTitle = 'New Notification';
+                    let notifBody = '';
+
+                    if (notification.type === 'friend_request') {
+                        notifTitle = 'New Friend Request';
+                        notifBody = `${fromUser.username} sent you a friend request`;
+                    } else if (notification.type === 'message') {
+                        notifTitle = 'New Message';
+                        notifBody = `${fromUser.username}: ${notification.content || 'Sent a file'}`;
+                    }
+                    new Notification(notifTitle, {
+                        body: notifBody,
+                        icon: fromUser.avatar_url || '/favicon.ico'
+                    });
+                }
+
+                if (userSettings.messageSound && notification.type === 'message') {
+                    playMessageSound();
+                }
+            })
+            .subscribe((status) => {
+            });
+
+        subscriptions.push(channel);
+    }
+
+    document.getElementById('notifications-btn')?.addEventListener('click', async () => {
+        await loadNotifications();
+        renderNotifications();
+        showModal(document.getElementById('notifications-modal'));
+    });
+
+    document.getElementById('notifications-btn')?.addEventListener('click', async () => {
+        await loadNotifications();
+        renderNotifications();
+        showModal(document.getElementById('notifications-modal'));
+    });
+
+    document.getElementById('notifications-btn')?.addEventListener('click', async () => {
+        await loadNotifications();
+        subscribeToFriendshipChanges();
+        subscribeToNotifications();
+        renderNotifications();
+        showModal(document.getElementById('notifications-modal'));
+    });
+
+    function linkifyText(text) {
+        if (!text) return '';
+
+        const urlRegex = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/g;
+
+        const escaped = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+
+        return escaped.replace(urlRegex, (url) => {
+            let cleanUrl = url;
+            if (url.match(/[.,;:!?)]$/)) {
+                cleanUrl = url.slice(0, -1);
+            }
+            return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="message-link" onclick="event.stopPropagation()">${cleanUrl}</a>`;
+        });
+    }
+
+    async function fetchLinkPreview(url) {
+        try {
+            const { data: existing, error: selectError } = await supabase
+                .from('link_previews')
+                .select('*')
+                .eq('url', url)
+                .maybeSingle();
+
+            if (existing && !selectError) {
+                return existing;
+            }
+
+            const response = await fetch(`https://api.microlink.io?url=${encodeURIComponent(url)}`);
+            const data = await response.json();
+
+            if (data.status === 'success' && data.data) {
+                const preview = {
+                    url: url,
+                    title: data.data.title || null,
+                    description: data.data.description || null,
+                    image_url: data.data.image?.url || null,
+                    favicon_url: data.data.logo?.url || null,
+                    site_name: data.data.publisher || null
+                };
+
+                const { error: insertError } = await supabase
+                    .from('link_previews')
+                    .insert(preview)
+                    .select()
+                    .single();
+
+                if (!insertError) {
+                    return preview;
+                }
+            }
+        } catch (error) {
+        }
+        return null;
+    }
+
+    async function addLinkPreviewsToMessage(messageElement, content) {
+        if (!content) return;
+
+        const urlRegex = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/g;
+        const urls = content.match(urlRegex);
+
+        if (!urls || urls.length === 0) return;
+
+        const uniqueUrls = [...new Set(urls)];
+        const firstUrl = uniqueUrls[0].replace(/[.,;:!?)]$/, '');
+
+        try {
+            const preview = await fetchLinkPreview(firstUrl);
+            if (!preview) return;
+
+            const previewElement = document.createElement('a');
+            previewElement.className = 'link-preview';
+            previewElement.href = preview.url;
+            previewElement.target = '_blank';
+            previewElement.rel = 'noopener noreferrer';
+            previewElement.onclick = (e) => e.stopPropagation();
+
+            if (preview.image_url) {
+                const img = document.createElement('img');
+                img.className = 'link-preview-image';
+                img.src = preview.image_url;
+                img.alt = preview.title || 'Link preview';
+                img.onerror = () => img.style.display = 'none';
+                previewElement.appendChild(img);
+            }
+
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'link-preview-content';
+
+            if (preview.title) {
+                const title = document.createElement('div');
+                title.className = 'link-preview-title';
+                title.textContent = preview.title;
+                contentDiv.appendChild(title);
+            }
+
+            if (preview.description) {
+                const desc = document.createElement('div');
+                desc.className = 'link-preview-description';
+                desc.textContent = preview.description;
+                contentDiv.appendChild(desc);
+            }
+
+            const urlDiv = document.createElement('div');
+            urlDiv.className = 'link-preview-url';
+            try {
+                const urlObj = new URL(preview.url);
+                urlDiv.textContent = urlObj.hostname;
+            } catch {
+                urlDiv.textContent = preview.url;
+            }
+            contentDiv.appendChild(urlDiv);
+
+            previewElement.appendChild(contentDiv);
+            messageElement.appendChild(previewElement);
+        } catch (error) {
+        }
+    }
+    document.addEventListener('click', async (e) => {
+        const unfriendBtn = e.target.closest('#unfriend-btn, #unfriend-btn-dynamic');
+        if (unfriendBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (currentChatType === 'friend' && currentChatFriend) {
+                showConfirmation(
+                    'Remove Friend',
+                    `Are you sure you want to remove ${currentChatFriend.username} from your friends?`,
+                    async () => {
+                        const removedFriendId = currentChatFriend.id;
+                        try {
+                            const { data: friendshipsToDelete, error: fetchError } = await supabase
+                                .from('friendships')
+                                .select('*')
+                                .or(`and(user_id.eq.${currentUser.id},friend_id.eq.${removedFriendId}),and(user_id.eq.${removedFriendId},friend_id.eq.${currentUser.id})`);
+
+                            if (fetchError) {
+                                throw fetchError;
+                            }
+                            if (!friendshipsToDelete || friendshipsToDelete.length === 0) {
+                                showInfo('Error', 'No friendship found. You may already not be friends.');
+                                return;
+                            }
+                            const { data: deleteResult, error: deleteError } = await supabase
+                                .from('friendships')
+                                .delete()
+                                .or(`and(user_id.eq.${currentUser.id},friend_id.eq.${removedFriendId}),and(user_id.eq.${removedFriendId},friend_id.eq.${currentUser.id})`)
+                                .select();
+
+                            if (deleteError) {
+                                throw deleteError;
+                            }
+                            delete friends[removedFriendId];
+                            hideModal();
+                            ui.chatView.classList.add('hidden');
+                            ui.welcomeScreen.classList.remove('hidden');
+                            currentChatFriend = null;
+                            await updateConversationsList();
+                            const channelName = `unfriend-${currentUser.id}-${removedFriendId}-${Date.now()}`;
+                            const unfriendChannel = supabase.channel(channelName);
+
+                            await new Promise((resolve, reject) => {
+                                const timeout = setTimeout(() => {
+                                    resolve();
+                                }, 3000);
+
+                                unfriendChannel.subscribe((status) => {
+                                    if (status === 'SUBSCRIBED') {
+                                        clearTimeout(timeout);
+                                        resolve();
+                                    }
+                                });
+                            });
+
+                            const payload = {
+                                removedBy: currentUser.id,
+                                removedUser: removedFriendId,
+                                timestamp: Date.now()
+                            };
+                            await unfriendChannel.send({
+                                type: 'broadcast',
+                                event: 'friendship_removed',
+                                payload: payload
+                            });
+                            setTimeout(() => {
+                                supabase.removeChannel(unfriendChannel);
+                            }, 1000);
+                            showInfo('Success', 'Friend removed successfully');
+                        } catch (error) {
+                            showInfo('Error', `Failed to remove friend: ${error.message}`);
+                        }
+                    }
+                );
+            } else {
+            }
+        }
+
+        const blockBtn = e.target.closest('#block-user-btn, #block-user-btn-dynamic');
+        if (blockBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (currentChatType === 'friend' && currentChatFriend) {
+                showConfirmation(
+                    `Block ${currentChatFriend.username}?`,
+                    'This user will be blocked and you will not receive messages from them.',
+                    async () => {
+                        const blockedUserId = currentChatFriend.id;
+                        try {
+                            const { data: existingBlock } = await supabase
+                                .from('blocked_users')
+                                .select('*')
+                                .eq('user_id', currentUser.id)
+                                .eq('blocked_user_id', blockedUserId)
+                                .maybeSingle();
+                            if (existingBlock) {
+                                showInfo('Info', 'User is already blocked');
+                                return;
+                            }
+                            const { data: blockData, error: blockError } = await supabase
+                                .from('blocked_users')
+                                .insert([{
+                                    user_id: currentUser.id,
+                                    blocked_user_id: blockedUserId,
+                                    created_at: new Date().toISOString()
+                                }])
+                                .select()
+                                .single();
+
+                            if (blockError) {
+                                throw blockError;
+                            }
+                            const { data: deleteResult, error: deleteError } = await supabase
+                                .from('friendships')
+                                .delete()
+                                .or(`and(user_id.eq.${currentUser.id},friend_id.eq.${blockedUserId}),and(user_id.eq.${blockedUserId},friend_id.eq.${currentUser.id})`)
+                                .select();
+                            if (deleteError) {
+                            }
+                            delete friends[blockedUserId];
+                            await loadBlockedUsers();
+                            hideModal();
+                            ui.chatView.classList.add('hidden');
+                            ui.welcomeScreen.classList.remove('hidden');
+                            currentChatFriend = null;
+                            await updateConversationsList();
+                            const channelName = `block-${currentUser.id}-${blockedUserId}-${Date.now()}`;
+                            const blockChannel = supabase.channel(channelName);
+
+                            await new Promise((resolve) => {
+                                const timeout = setTimeout(() => {
+                                    resolve();
+                                }, 3000);
+
+                                blockChannel.subscribe((status) => {
+                                    if (status === 'SUBSCRIBED') {
+                                        clearTimeout(timeout);
+                                        resolve();
+                                    }
+                                });
+                            });
+
+                            const payload = {
+                                blockedBy: currentUser.id,
+                                blockedUser: blockedUserId,
+                                timestamp: Date.now()
+                            };
+                            await blockChannel.send({
+                                type: 'broadcast',
+                                event: 'user_blocked',
+                                payload: payload
+                            });
+                            setTimeout(() => {
+                                supabase.removeChannel(blockChannel);
+                            }, 1000);
+                            showInfo('Success', 'User blocked successfully');
+                        } catch (error) {
+                            showInfo('Error', `Failed to block user: ${error.message}`);
+                        }
+                    }
+                );
+            } else {
+            }
+        }
+    });
+
+    function subscribeToFriendshipChanges() {
+        if (!currentUser || !currentUser.id) {
+            return;
+        }
+        const personalChannel = supabase.channel(`friendship-${currentUser.id}`);
+
+        personalChannel
+            .on('broadcast', { event: 'friendship_removed' }, async (payload) => {
+                const { removedBy, removedUser } = payload.payload;
+
+                if (removedUser === currentUser.id) {
+                    delete friends[removedBy];
+
+                    if (currentChatFriend && currentChatFriend.id === removedBy) {
+                        ui.chatView.classList.add('hidden');
+                        ui.welcomeScreen.classList.remove('hidden');
+                        currentChatFriend = null;
+                        showInfo('Friend Removed', 'You have been removed from this friendship');
+                    }
+
+                    await updateConversationsList();
+                }
+            })
+            .on('broadcast', { event: 'user_blocked' }, async (payload) => {
+                const { blockedBy, blockedUser } = payload.payload;
+
+                if (blockedUser === currentUser.id) {
+                    delete friends[blockedBy];
+
+                    if (currentChatFriend && currentChatFriend.id === blockedBy) {
+                        ui.chatView.classList.add('hidden');
+                        ui.welcomeScreen.classList.remove('hidden');
+                        currentChatFriend = null;
+                        showInfo('Blocked', 'You have been blocked by this user');
+                    }
+
+                    await updateConversationsList();
+                }
+            })
+            .subscribe((status) => {
+            });
+
+        subscriptions.push(personalChannel);
+
+        const dbChannel = supabase
+            .channel('db-friendship-changes')
+            .on('postgres_changes', {
+                event: 'DELETE',
+                schema: 'public',
+                table: 'friendships',
+                filter: `user_id=eq.${currentUser.id}`
+            }, async (payload) => {
+                const friendId = payload.old.friend_id;
+                if (friends[friendId]) {
+                    delete friends[friendId];
+                    if (currentChatFriend?.id === friendId) {
+                        ui.chatView.classList.add('hidden');
+                        ui.welcomeScreen.classList.remove('hidden');
+                        currentChatFriend = null;
+                    }
+                    await updateConversationsList();
+                }
+            })
+            .on('postgres_changes', {
+                event: 'DELETE',
+                schema: 'public',
+                table: 'friendships',
+                filter: `friend_id=eq.${currentUser.id}`
+            }, async (payload) => {
+                const friendId = payload.old.user_id;
+                if (friends[friendId]) {
+                    delete friends[friendId];
+                    if (currentChatFriend?.id === friendId) {
+                        ui.chatView.classList.add('hidden');
+                        ui.welcomeScreen.classList.remove('hidden');
+                        currentChatFriend = null;
+                    }
+                    await updateConversationsList();
+                }
+            })
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'blocked_users',
+                filter: `blocked_user_id=eq.${currentUser.id}`
+            }, async (payload) => {
+                const blockerId = payload.new.user_id;
+                if (friends[blockerId]) {
+                    delete friends[blockerId];
+                    if (currentChatFriend?.id === blockerId) {
+                        ui.chatView.classList.add('hidden');
+                        ui.welcomeScreen.classList.remove('hidden');
+                        currentChatFriend = null;
+                    }
+                    await updateConversationsList();
+                }
+            })
+            .subscribe((status) => {
+            });
+
+        subscriptions.push(dbChannel);
+    }
     function closeAllModals() {
         ui.modalContainer.classList.add('hidden');
         ui.addFriendModal?.classList.add('hidden');
@@ -178,6 +827,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ui.createServerModal?.classList.add('hidden');
         ui.joinServerModal?.classList.add('hidden');
         ui.serverInfoModal?.classList.add('hidden');
+        ui.blockedUsersModal?.classList.add('hidden');
     }
 
     function showInfo(title, message) {
@@ -443,8 +1093,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let serverMessagesSubscription = null;
 
     function subscribeToServerMessages(serverId) {
-        console.log('Subscribing to server messages for server:', serverId);
-
         unsubscribeFromServerMessages();
 
         const channelName = `server_messages_${serverId}`;
@@ -461,8 +1109,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 table: 'server_messages',
                 filter: `server_id=eq.${serverId}`
             }, async (payload) => {
-                console.log('Server message INSERT event:', payload);
-
                 const { data: userData } = await supabaseClient
                     .from(currentUser.table_name || 'profiles')
                     .select('username, avatar_url')
@@ -477,8 +1123,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 table: 'server_messages',
                 filter: `server_id=eq.${serverId}`
             }, (payload) => {
-                console.log('Server message UPDATE event:', payload);
-
                 const msgElement = document.querySelector(`[data-message-id="${payload.new.id}"]`);
                 if (msgElement) {
                     const contentElement = msgElement.querySelector('.message-content');
@@ -493,15 +1137,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 table: 'server_messages',
                 filter: `server_id=eq.${serverId}`
             }, (payload) => {
-                console.log('Server message DELETE event:', payload);
                 removeMessageFromUI(payload.old.id);
             })
             .subscribe((status, err) => {
                 if (err) {
-                    console.error('Server messages subscription error:', err);
                 }
                 if (status === 'SUBSCRIBED') {
-                    console.log('Successfully subscribed to server messages');
                 }
             });
     }
@@ -1069,6 +1710,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             showApp(true);
+
+            await loadNotifications();
         } else {
             showAuth(true);
         }
@@ -1360,7 +2003,42 @@ document.addEventListener('DOMContentLoaded', () => {
             .eq('user_id', currentUser.id)
             .eq('status', 'pending');
 
-        friendRequests = incoming || [];
+        if (incoming && incoming.length > 0) {
+            const requesterIds = incoming.map(req => req.user_id);
+
+            const { data: blocks } = await supabase
+                .from('blocked_users')
+                .select('*')
+                .or(`and(user_id.eq.${currentUser.id},blocked_user_id.in.(${requesterIds.join(',')})),and(user_id.in.(${requesterIds.join(',')}),blocked_user_id.eq.${currentUser.id})`);
+
+            if (blocks && blocks.length > 0) {
+                const blockedUserIds = new Set();
+                blocks.forEach(block => {
+                    if (block.user_id === currentUser.id) {
+                        blockedUserIds.add(block.blocked_user_id);
+                    } else {
+                        blockedUserIds.add(block.user_id);
+                    }
+                });
+
+                const invalidRequestIds = incoming
+                    .filter(req => blockedUserIds.has(req.user_id))
+                    .map(req => req.id);
+
+                if (invalidRequestIds.length > 0) {
+                    await supabase
+                        .from('friendships')
+                        .delete()
+                        .in('id', invalidRequestIds);
+                }
+
+                friendRequests = incoming.filter(req => !blockedUserIds.has(req.user_id));
+            } else {
+                friendRequests = incoming || [];
+            }
+        } else {
+            friendRequests = [];
+        }
     };
 
     const loadBlockedUsers = async () => {
@@ -1585,27 +2263,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const subscribeToMessageBroadcasts = () => {
         if (!currentUser || !currentUser.id) return;
-
-        const channel = supabase.channel(`messages-${currentUser.id}`);
-
-        channel
+        const channel = supabase.channel(`messages-${currentUser.id}`)
             .on('broadcast', { event: 'new_message' }, async (payload) => {
-                const { data: message } = await supabase
+                const messageId = payload.payload.messageId;
+
+                const { data: message, error } = await supabase
                     .from('messages')
                     .select('*')
-                    .eq('id', payload.payload.messageId)
+                    .eq('id', messageId)
                     .single();
-
-                if (message) {
+                if (message && !error) {
                     const { data: sender } = await supabase
                         .from('profiles')
                         .select('*')
                         .eq('id', message.sender_id)
                         .single();
-
                     if (sender && currentChatFriend && currentChatFriend.id === message.sender_id) {
                         displayMessage(message, sender);
                         scrollToBottom();
+                    } else {
                     }
 
                     await updateConversationsList();
@@ -1650,7 +2326,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             })
-            .subscribe();
+            .subscribe((status) => {
+            });
 
         subscriptions.push(channel);
     };
@@ -1755,7 +2432,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (userSettings.notifications && 'Notification' in window && Notification.permission === 'granted') {
                 new Notification(`New message from ${sender.username}`, {
                     body: message.content || 'Sent a file',
-                    icon: sender.avatar_url || '/icon.png',
+                    icon: sender.avatar_url || '/favicon.ico',
                     tag: message.id
                 });
             }
@@ -2011,6 +2688,44 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        const { data: iBlockedThem } = await supabase
+            .from('blocked_users')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .eq('blocked_user_id', request.user_id)
+            .maybeSingle();
+
+        if (iBlockedThem) {
+            await supabase
+                .from('friendships')
+                .delete()
+                .eq('id', requestId);
+
+            await loadFriendRequests();
+            renderFriendRequests();
+            showInfo('Cannot accept', 'You have blocked this user.');
+            return;
+        }
+
+        const { data: theyBlockedMe } = await supabase
+            .from('blocked_users')
+            .select('*')
+            .eq('user_id', request.user_id)
+            .eq('blocked_user_id', currentUser.id)
+            .maybeSingle();
+
+        if (theyBlockedMe) {
+            await supabase
+                .from('friendships')
+                .delete()
+                .eq('id', requestId);
+
+            await loadFriendRequests();
+            renderFriendRequests();
+            showInfo('Cannot accept', 'This request is no longer valid.');
+            return;
+        }
+
         const { error } = await supabase
             .from('friendships')
             .update({ status: 'accepted' })
@@ -2088,6 +2803,19 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.openChat = async (id, type) => {
+        if (isCurrentlyTyping && currentTypingChannel) {
+            isCurrentlyTyping = false;
+            await currentTypingChannel.send({
+                type: 'broadcast',
+                event: 'typing',
+                payload: { userId: currentUser.id, isTyping: false }
+            });
+            currentTypingChannel = null;
+            currentTypingFriendId = null;
+        }
+
+        ui.typingIndicator.classList.add('hidden');
+
         currentChatType = type;
         currentServer = null;
 
@@ -2096,8 +2824,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!currentChatFriend) {
                 return;
             }
+
             updateURLPath(`chat/${id}`);
             ui.chatAvatar.textContent = currentChatFriend.username[0].toUpperCase();
+
+            await loadMessages(currentChatFriend.id);
+            subscribeToTypingIndicators(id);
 
             const isOnline = onlineUsers.has(currentChatFriend.id);
             ui.chatStatusText.textContent = isOnline ? 'Online' : 'Offline';
@@ -2115,6 +2847,7 @@ document.addEventListener('DOMContentLoaded', () => {
             await loadMessages(currentChatFriend.id);
             subscribeToTypingIndicators(id);
         }
+
         ui.welcomeScreen.classList.add('hidden');
         ui.chatView.classList.remove('hidden');
 
@@ -2138,22 +2871,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const activeItem = document.querySelector(`[data-friend-id="${id}"]`);
         if (activeItem) {
             activeItem.classList.add('active');
-        } else {
         }
     };
 
     const subscribeToTypingIndicators = (friendId) => {
-        subscriptions.forEach(sub => {
-            if (sub && sub.topic && sub.topic.includes('typing-')) {
-                supabase.removeChannel(sub);
-            }
-        });
-
         const userId1 = currentUser.id;
         const userId2 = friendId;
         const channelName = `typing-${userId1 < userId2 ? userId1 : userId2}-${userId1 < userId2 ? userId2 : userId1}`;
+        const existingChannel = subscriptions.find(sub => sub.topic === `realtime:${channelName}`);
+        if (existingChannel) {
+            return;
+        }
 
-        const typingChannel = supabase.channel(channelName);
+        const typingChannel = supabase.channel(channelName, {
+            config: {
+                broadcast: { ack: false }
+            }
+        });
 
         typingChannel
             .on('broadcast', { event: 'typing' }, (payload) => {
@@ -2166,6 +2900,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             })
             .subscribe((status) => {
+                if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                    setTimeout(() => {
+                        subscribeToTypingIndicators(friendId);
+                    }, 1000);
+                }
             });
 
         subscriptions.push(typingChannel);
@@ -2275,7 +3014,6 @@ document.addEventListener('DOMContentLoaded', () => {
     window.scrollToMessage = scrollToMessage;
 
     const createMessageElement = (message, sender) => {
-
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${message.sender_id === currentUser.id ? 'sent' : 'received'}`;
         messageDiv.dataset.messageId = message.id;
@@ -2283,16 +3021,29 @@ document.addEventListener('DOMContentLoaded', () => {
         const isMobile = window.innerWidth <= 768;
         const isSent = message.sender_id === currentUser.id;
 
-        let content = '';
+        const contentWrapper = document.createElement('div');
+        contentWrapper.style.cssText = isMobile ? 'position: relative;' : '';
 
         if (message.reply_to_id) {
-            const replyText = message.reply_to_content || 'Original message';
-            content += `<div class="message-reply-context" onclick="scrollToMessage('${message.reply_to_id}')">
-    <div class="message-reply-content">
-        <span class="message-reply-author">${message.sender_id === currentUser.id ? 'You' : (currentChatFriend?.username || 'User')}</span>
-        <span class="message-reply-text">${escapeHtml(replyText)}</span>
-    </div>
-</div>`;
+            const replyDiv = document.createElement('div');
+            replyDiv.className = 'message-reply-context';
+            replyDiv.onclick = () => scrollToMessage(message.reply_to_id);
+
+            const replyContent = document.createElement('div');
+            replyContent.className = 'message-reply-content';
+
+            const replyAuthor = document.createElement('span');
+            replyAuthor.className = 'message-reply-author';
+            replyAuthor.textContent = message.sender_id === currentUser.id ? 'You' : (currentChatFriend?.username || 'User');
+
+            const replyText = document.createElement('span');
+            replyText.className = 'message-reply-text';
+            replyText.textContent = message.reply_to_content || 'Original message';
+
+            replyContent.appendChild(replyAuthor);
+            replyContent.appendChild(replyText);
+            replyDiv.appendChild(replyContent);
+            contentWrapper.appendChild(replyDiv);
         }
 
         if (message.files && Array.isArray(message.files) && message.files.length > 0) {
@@ -2302,14 +3053,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 const isAudio = file.type.startsWith('audio/') || file.name.match(/\.(mp3|wav|ogg|m4a|flac|aac)$/i);
 
                 if (isImage) {
-                    content += `<img src="${file.url}" alt="${file.name}" class="message-image" onclick="window.openImageFullscreen('${file.url}')">`;
+                    const img = document.createElement('img');
+                    img.src = file.url;
+                    img.alt = file.name;
+                    img.className = 'message-image';
+                    img.onclick = () => window.openImageFullscreen(file.url);
+                    contentWrapper.appendChild(img);
                 } else if (isVideo) {
-                    content += `<video controls src="${file.url}" style="max-width: 300px; border-radius: var(--button-border-radius); margin: 0.5rem 0;"></video>`;
+                    const video = document.createElement('video');
+                    video.controls = true;
+                    video.src = file.url;
+                    video.style.cssText = 'max-width: 300px; border-radius: var(--button-border-radius); margin: 0.5rem 0;';
+                    contentWrapper.appendChild(video);
                 } else if (isAudio) {
-                    content += `<audio controls src="${file.url}" class="message-audio" style="max-width: 100%; margin: 0.5rem 0;"></audio>`;
+                    const audio = document.createElement('audio');
+                    audio.controls = true;
+                    audio.src = file.url;
+                    audio.className = 'message-audio';
+                    audio.style.cssText = 'max-width: 100%; margin: 0.5rem 0;';
+                    contentWrapper.appendChild(audio);
                 } else {
                     const icon = getFileIcon(file.type, file.name);
-                    content += `<a href="${file.url}" target="_blank" class="message-file" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: var(--tertiary-bg); border-radius: var(--button-border-radius); text-decoration: none; color: var(--primary-text); margin: 0.5rem 0;"><i class="fa-solid ${icon}"></i> <div><div>${file.name}</div><div style="font-size: 0.85rem; color: var(--secondary-text);">${formatFileSize(file.size)}</div></div></a>`;
+                    const fileLink = document.createElement('a');
+                    fileLink.href = file.url;
+                    fileLink.target = '_blank';
+                    fileLink.className = 'message-file';
+                    fileLink.style.cssText = 'display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: var(--tertiary-bg); border-radius: var(--button-border-radius); text-decoration: none; color: var(--primary-text); margin: 0.5rem 0;';
+                    fileLink.innerHTML = `<i class="fa-solid ${icon}"></i> <div><div>${file.name}</div><div style="font-size: 0.85rem; color: var(--secondary-text);">${formatFileSize(file.size)}</div></div>`;
+                    contentWrapper.appendChild(fileLink);
                 }
             });
         }
@@ -2317,26 +3088,100 @@ document.addEventListener('DOMContentLoaded', () => {
         if (message.file_url) {
             const fileType = message.file_type || 'file';
             if (fileType.startsWith('image/')) {
-                content += `<img src="${message.file_url}" alt="Image" class="message-image" onclick="window.openImageFullscreen('${message.file_url}')" style="max-width: 300px; border-radius: var(--button-border-radius); cursor: pointer; display: block;">`;
+                const img = document.createElement('img');
+                img.src = message.file_url;
+                img.alt = 'Image';
+                img.className = 'message-image';
+                img.onclick = () => window.openImageFullscreen(message.file_url);
+                img.style.cssText = 'max-width: 300px; border-radius: var(--button-border-radius); cursor: pointer; display: block;';
+                contentWrapper.appendChild(img);
             } else if (fileType.startsWith('audio/')) {
-                content += `<audio controls src="${message.file_url}" class="message-audio" style="max-width: 100%;"></audio>`;
+                const audio = document.createElement('audio');
+                audio.controls = true;
+                audio.src = message.file_url;
+                audio.className = 'message-audio';
+                audio.style.cssText = 'max-width: 100%;';
+                contentWrapper.appendChild(audio);
             } else {
-                content += `<a href="${message.file_url}" target="_blank" class="message-file" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: var(--tertiary-bg); border-radius: var(--button-border-radius); text-decoration: none; color: var(--primary-text);"><i class="fa-solid fa-file"></i> ${message.file_name || 'File'}</a>`;
+                const fileLink = document.createElement('a');
+                fileLink.href = message.file_url;
+                fileLink.target = '_blank';
+                fileLink.className = 'message-file';
+                fileLink.style.cssText = 'display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: var(--tertiary-bg); border-radius: var(--button-border-radius); text-decoration: none; color: var(--primary-text);';
+                fileLink.innerHTML = `<i class="fa-solid fa-file"></i> ${message.file_name || 'File'}`;
+                contentWrapper.appendChild(fileLink);
             }
         }
 
         if (message.content) {
-            content += `<div class="message-content">${escapeHtml(message.content)}${message.edited ? '<span class="message-edited" style="font-size: 0.75rem; color: var(--secondary-text); margin-left: 0.5rem;">(edited)</span>' : ''}</div>`;
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+
+            const urlRegex = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/g;
+            const parts = message.content.split(urlRegex);
+            parts.forEach((part, index) => {
+                if (part.match(urlRegex)) {
+                    let cleanUrl = part;
+                    if (part.match(/[.,;:!?)]$/)) {
+                        const punctuation = part.slice(-1);
+                        cleanUrl = part.slice(0, -1);
+
+                        const link = document.createElement('a');
+                        link.href = cleanUrl;
+                        link.target = '_blank';
+                        link.rel = 'noopener noreferrer';
+                        link.className = 'message-link';
+                        link.textContent = cleanUrl;
+                        link.onclick = (e) => e.stopPropagation();
+
+                        contentDiv.appendChild(link);
+                        contentDiv.appendChild(document.createTextNode(punctuation));
+                    } else {
+                        const link = document.createElement('a');
+                        link.href = cleanUrl;
+                        link.target = '_blank';
+                        link.rel = 'noopener noreferrer';
+                        link.className = 'message-link';
+                        link.textContent = cleanUrl;
+                        link.onclick = (e) => e.stopPropagation();
+
+                        contentDiv.appendChild(link);
+                    }
+                } else if (part) {
+                    contentDiv.appendChild(document.createTextNode(part));
+                }
+            });
+
+            if (message.edited) {
+                const editedSpan = document.createElement('span');
+                editedSpan.className = 'message-edited';
+                editedSpan.style.cssText = 'font-size: 0.75rem; color: var(--secondary-text); margin-left: 0.5rem;';
+                editedSpan.textContent = '(edited)';
+                contentDiv.appendChild(editedSpan);
+            }
+
+            contentWrapper.appendChild(contentDiv);
+            addLinkPreviewsToMessage(contentWrapper, message.content);
         }
 
         if (message.call_duration !== null && message.call_duration !== undefined) {
             const duration = formatCallDuration(message.call_duration);
             const callType = message.call_duration === 0 ? 'Missed call' : 'Call';
             const durationText = message.call_duration === 0 ? '' : ` • ${duration}`;
-            content = `<div class="message-call-info" style="display: flex; align-items: center; gap: 0.5rem; color: var(--secondary-text); font-size: 0.9rem;"><i class="fa-solid fa-phone"></i> ${callType}${durationText}</div>`;
+
+            const callDiv = document.createElement('div');
+            callDiv.className = 'message-call-info';
+            callDiv.style.cssText = 'display: flex; align-items: center; gap: 0.5rem; color: var(--secondary-text); font-size: 0.9rem;';
+            callDiv.innerHTML = `<i class="fa-solid fa-phone"></i> ${callType}${durationText}`;
+            contentWrapper.innerHTML = '';
+            contentWrapper.appendChild(callDiv);
         }
 
-        content += `<div class="message-reactions" data-message-id="${message.id}" style="display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.25rem;"></div>`;
+        const reactionsDiv = document.createElement('div');
+        reactionsDiv.className = 'message-reactions';
+        reactionsDiv.dataset.messageId = message.id;
+        reactionsDiv.style.cssText = 'display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.25rem;';
+        contentWrapper.appendChild(reactionsDiv);
 
         const timestamp = new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -2355,17 +3200,11 @@ document.addEventListener('DOMContentLoaded', () => {
             ${isSent ? 'right: 0.5rem;' : 'left: 0.5rem;'}
         `;
 
-            const contentWrapper = document.createElement('div');
-            contentWrapper.innerHTML = content;
-            contentWrapper.style.cssText = 'position: relative;';
-
             messageDiv.appendChild(contentWrapper);
             messageDiv.appendChild(timestampDiv);
 
             setupMessageSwipe(contentWrapper, isSent);
         } else {
-            const contentWrapper = document.createElement('div');
-            contentWrapper.innerHTML = content;
             messageDiv.appendChild(contentWrapper);
 
             const timestampDiv = document.createElement('div');
@@ -2384,6 +3223,9 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             showMessageContextMenu(e, message);
         });
+
+        let lastTap = 0;
+        const DOUBLE_TAP_DELAY = 300;
 
         messageDiv.addEventListener('touchend', (e) => {
             const currentTime = new Date().getTime();
@@ -2413,29 +3255,6 @@ document.addEventListener('DOMContentLoaded', () => {
             renderReactions(message.id, message.reactions);
         }
 
-        messageDiv.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            showMessageContextMenu(e, msg);
-        });
-
-        messageDiv.addEventListener('touchend', (e) => {
-            const currentTime = new Date().getTime();
-            const tapLength = currentTime - lastTap;
-
-            if (tapLength < DOUBLE_TAP_DELAY && tapLength > 0) {
-                e.preventDefault();
-                const touch = e.changedTouches[0];
-                const event = new MouseEvent('contextmenu', {
-                    clientX: touch.clientX,
-                    clientY: touch.clientY,
-                    bubbles: true,
-                    cancelable: true
-                });
-                messageDiv.dispatchEvent(event);
-            }
-            lastTap = currentTime;
-        }, { passive: false });
-
         return messageDiv;
     };
 
@@ -2455,20 +3274,29 @@ document.addEventListener('DOMContentLoaded', () => {
         const isMobile = window.innerWidth <= 768;
         const isSent = msg.user_id === currentUser.id;
 
-        let content = '';
+        const contentWrapper = document.createElement('div');
+        contentWrapper.style.cssText = isMobile ? 'position: relative;' : '';
 
         if (msg.reply_to_id) {
-            const replyText = msg.reply_to_content || 'Original message';
-            content += `<div class="message-reply-context" onclick="scrollToMessage('${msg.reply_to_id}')">
-    <div class="message-reply-content">
-        <span class="message-reply-author">${msg.user_id === currentUser.id ? 'You' : username}</span>
-        <span class="message-reply-text">${escapeHtml(replyText)}</span>
-    </div>
-</div>`;
-        }
+            const replyDiv = document.createElement('div');
+            replyDiv.className = 'message-reply-context';
+            replyDiv.onclick = () => scrollToMessage(msg.reply_to_id);
 
-        if (msg.content) {
-            content += `<div class="message-content">${escapeHtml(msg.content)}</div>`;
+            const replyContent = document.createElement('div');
+            replyContent.className = 'message-reply-content';
+
+            const replyAuthor = document.createElement('span');
+            replyAuthor.className = 'message-reply-author';
+            replyAuthor.textContent = msg.user_id === currentUser.id ? 'You' : username;
+
+            const replyText = document.createElement('span');
+            replyText.className = 'message-reply-text';
+            replyText.textContent = msg.reply_to_content || 'Original message';
+
+            replyContent.appendChild(replyAuthor);
+            replyContent.appendChild(replyText);
+            replyDiv.appendChild(replyContent);
+            contentWrapper.appendChild(replyDiv);
         }
 
         if (msg.files && Array.isArray(msg.files) && msg.files.length > 0) {
@@ -2478,24 +3306,90 @@ document.addEventListener('DOMContentLoaded', () => {
                 const isAudio = file.type.startsWith('audio/') || file.name.match(/\.(mp3|wav|ogg|m4a|flac|aac)$/i);
 
                 if (isImage) {
-                    content += `<img src="${file.url}" alt="${file.name}" class="message-image" onclick="window.openImageFullscreen('${file.url}')">`;
+                    const img = document.createElement('img');
+                    img.src = file.url;
+                    img.alt = file.name;
+                    img.className = 'message-image';
+                    img.onclick = () => window.openImageFullscreen(file.url);
+                    contentWrapper.appendChild(img);
                 } else if (isVideo) {
-                    content += `<video controls src="${file.url}" style="max-width: 300px; border-radius: var(--button-border-radius); margin: 0.5rem 0;"></video>`;
+                    const video = document.createElement('video');
+                    video.controls = true;
+                    video.src = file.url;
+                    video.style.cssText = 'max-width: 300px; border-radius: var(--button-border-radius); margin: 0.5rem 0;';
+                    contentWrapper.appendChild(video);
                 } else if (isAudio) {
-                    content += `<audio controls src="${file.url}" class="message-audio" style="max-width: 100%; margin: 0.5rem 0;"></audio>`;
+                    const audio = document.createElement('audio');
+                    audio.controls = true;
+                    audio.src = file.url;
+                    audio.className = 'message-audio';
+                    audio.style.cssText = 'max-width: 100%; margin: 0.5rem 0;';
+                    contentWrapper.appendChild(audio);
                 } else {
                     const icon = getFileIcon(file.type, file.name);
-                    content += `<a href="${file.url}" target="_blank" class="message-file" style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: var(--tertiary-bg); border-radius: var(--button-border-radius); text-decoration: none; color: var(--primary-text); margin: 0.5rem 0;"><i class="fa-solid ${icon}"></i> <div><div>${file.name}</div><div style="font-size: 0.85rem; color: var(--secondary-text);">${formatFileSize(file.size)}</div></div></a>`;
+                    const fileLink = document.createElement('a');
+                    fileLink.href = file.url;
+                    fileLink.target = '_blank';
+                    fileLink.className = 'message-file';
+                    fileLink.style.cssText = 'display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: var(--tertiary-bg); border-radius: var(--button-border-radius); text-decoration: none; color: var(--primary-text); margin: 0.5rem 0;';
+                    fileLink.innerHTML = `<i class="fa-solid ${icon}"></i> <div><div>${file.name}</div><div style="font-size: 0.85rem; color: var(--secondary-text);">${formatFileSize(file.size)}</div></div>`;
+                    contentWrapper.appendChild(fileLink);
                 }
             });
         }
 
-        const timestamp = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        if (msg.content) {
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
 
-        const userInitials = username.substring(0, 2).toUpperCase();
-        const avatarHtml = msg.avatar_url ?
-            `<img src="${msg.avatar_url}" alt="${username}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">` :
-            userInitials;
+            const urlRegex = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/g;
+            const parts = msg.content.split(urlRegex);
+            parts.forEach((part) => {
+                if (part.match(urlRegex)) {
+                    let cleanUrl = part;
+                    if (part.match(/[.,;:!?)]$/)) {
+                        const punctuation = part.slice(-1);
+                        cleanUrl = part.slice(0, -1);
+
+                        const link = document.createElement('a');
+                        link.href = cleanUrl;
+                        link.target = '_blank';
+                        link.rel = 'noopener noreferrer';
+                        link.className = 'message-link';
+                        link.textContent = cleanUrl;
+                        link.onclick = (e) => e.stopPropagation();
+
+                        contentDiv.appendChild(link);
+                        contentDiv.appendChild(document.createTextNode(punctuation));
+                    } else {
+                        const link = document.createElement('a');
+                        link.href = cleanUrl;
+                        link.target = '_blank';
+                        link.rel = 'noopener noreferrer';
+                        link.className = 'message-link';
+                        link.textContent = cleanUrl;
+                        link.onclick = (e) => e.stopPropagation();
+
+                        contentDiv.appendChild(link);
+                    }
+                } else if (part) {
+                    contentDiv.appendChild(document.createTextNode(part));
+                }
+            });
+
+            if (msg.edited) {
+                const editedSpan = document.createElement('span');
+                editedSpan.className = 'message-edited';
+                editedSpan.style.cssText = 'font-size: 0.75rem; color: var(--secondary-text); margin-left: 0.5rem;';
+                editedSpan.textContent = '(edited)';
+                contentDiv.appendChild(editedSpan);
+            }
+
+            contentWrapper.appendChild(contentDiv);
+            addLinkPreviewsToMessage(contentWrapper, msg.content);
+        }
+
+        const timestamp = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
         if (isMobile) {
             const timestampDiv = document.createElement('div');
@@ -2512,44 +3406,20 @@ document.addEventListener('DOMContentLoaded', () => {
             ${isSent ? 'right: 0.5rem;' : 'left: 0.5rem;'}
         `;
 
-            const contentWrapper = document.createElement('div');
-            contentWrapper.style.cssText = 'position: relative; gap: 0.5rem;';
-
-            if (!isSent) {
-                contentWrapper.innerHTML = `
-                <div class="server-message-avatar" style="width: 32px; height: 32px; border-radius: 50%; background: var(--tertiary-bg); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.75rem; font-weight: 600;">${avatarHtml}</div>
-                <div style="flex: 1;">
-                    <strong style="font-size: 0.9rem;">${username}</strong>
-                    <div>${content}</div>
-                </div>
-            `;
-            } else {
-                contentWrapper.innerHTML = `<div>${content}</div>`;
-            }
-
             messageDiv.appendChild(contentWrapper);
             messageDiv.appendChild(timestampDiv);
 
             setupMessageSwipe(contentWrapper, isSent);
         } else {
-            if (!isSent) {
-                messageDiv.innerHTML = `
-                <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
-                    <div class="server-message-avatar" style="width: 32px; height: 32px; border-radius: 50%; background: var(--tertiary-bg); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.75rem; font-weight: 600;">${avatarHtml}</div>
-                    <div style="flex: 1;">
-                        <strong style="font-size: 0.9rem;">${username}</strong>
-                        <div>${content}</div>
-                        <span class="message-time" style="font-size: 0.7rem; color: var(--secondary-text); margin-top: 0.25rem; display: block;">${timestamp}</span>
-                    </div>
-                </div>
-            `;
-            } else {
-                messageDiv.innerHTML = `
-                <div>${content}</div>
-                <span class="message-time" style="font-size: 0.7rem; color: var(--secondary-text); margin-top: 0.25rem; display: block; text-align: right;">${timestamp}</span>
-            `;
-            }
+            messageDiv.appendChild(contentWrapper);
+
+            const timestampDiv = document.createElement('div');
+            timestampDiv.className = 'message-timestamp';
+            timestampDiv.textContent = timestamp;
+            timestampDiv.style.cssText = `font-size: 0.7rem; color: var(--secondary-text); margin-top: 0.25rem; text-align: ${isSent ? 'right' : 'left'};`;
+            messageDiv.appendChild(timestampDiv);
         }
+
         messageDiv.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -2616,6 +3486,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (message.reactions) {
             renderReactions(message.id, message.reactions);
         }
+        scrollToBottom();
     };
 
     const setupMessageSwipe = (element, isSent) => {
@@ -2668,7 +3539,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!contentElement) return;
 
         const originalText = content;
-        // Check if it was already edited to preserve the tag if we cancel
         const wasEdited = contentElement.querySelector('.message-edited') !== null;
 
         const textarea = document.createElement('textarea');
@@ -2725,10 +3595,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // 1. Optimistic Update (Update UI immediately)
             contentElement.innerHTML = `${escapeHtml(newContent)}<span class="message-edited" style="font-size: 0.75rem; color: var(--secondary-text); margin-left: 0.5rem;">(edited)</span>`;
 
-            // 2. Database Update
             try {
                 const { error } = await window.supabase
                     .from('server_messages')
@@ -2737,15 +3605,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         edited: true
                     })
                     .eq('id', messageId)
-                    .eq('user_id', currentUser.id); // Extra safety check
+                    .eq('user_id', currentUser.id);
 
                 if (error) {
-                    console.error('Edit failed:', error);
                     showInfo('Error', 'Failed to save edit: ' + error.message);
-                    cancelEdit(); // Revert on error
+                    cancelEdit();
                 }
             } catch (error) {
-                console.error('Edit error:', error);
                 cancelEdit();
             }
         };
@@ -2778,20 +3644,17 @@ document.addEventListener('DOMContentLoaded', () => {
                         .select();
 
                     if (error) {
-                        console.error('Delete failed:', error);
                         showInfo('Error', 'Failed to delete message: ' + error.message);
                         if (currentServer) loadServerMessages(currentServer.id);
                         return;
                     }
 
                     if (data && data.length === 0) {
-                        console.warn('Delete returned 0 rows. RLS policy might be blocking this.');
                         showInfo('Error', 'Could not delete message. You might not have permission.');
                         if (currentServer) loadServerMessages(currentServer.id);
                     }
 
                 } catch (error) {
-                    console.error('Delete error:', error);
                     showInfo('Error', 'An error occurred while deleting');
                 }
             }
@@ -3032,17 +3895,13 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.editMessage = (messageId, content) => {
-        console.log('Edit message called for:', messageId, 'Content:', content);
-
         const msgElement = document.querySelector(`[data-message-id="${messageId}"]`);
         if (!msgElement) {
-            console.error('Message element not found');
             return;
         }
 
         const contentElement = msgElement.querySelector('.message-content');
         if (!contentElement) {
-            console.error('Content element not found');
             return;
         }
 
@@ -3108,10 +3967,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const saveEdit = async () => {
             const newContent = textarea.value.trim();
-            console.log('Saving edit - New content:', newContent);
-
             if (!newContent) {
-                console.log('Empty content, canceling');
                 cancelEdit();
                 return;
             }
@@ -3121,24 +3977,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 .select('sender_id, receiver_id')
                 .eq('id', messageId)
                 .single();
-
-            console.log('Fetched message for edit:', message, 'Error:', fetchError);
-
             const { error } = await supabase.from('messages').update({
                 content: newContent,
                 edited: true
             }).eq('id', messageId);
-
-            console.log('Update result - Error:', error);
-
             if (error) {
-                console.error('Edit failed:', error);
                 showInfoModal('Error', 'Failed to edit message.');
                 cancelEdit();
                 return;
             }
-
-            console.log('Message updated successfully');
             updateMessageInUI({ id: messageId, content: newContent, edited: true });
 
             if (message) {
@@ -3168,7 +4015,6 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         const cancelEdit = () => {
-            console.log('Edit canceled');
             contentElement.textContent = originalText;
             const editedBadge = msgElement.querySelector('.message-edited');
             if (editedBadge) {
@@ -3190,36 +4036,22 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.deleteMessage = async (messageId) => {
-        console.log('Delete message called for:', messageId);
-
         showConfirmationModal('Delete this message?', 'This action cannot be undone.', async () => {
-            console.log('Delete confirmed for message:', messageId);
-
             const { data: message, error: fetchError } = await supabase
                 .from('messages')
                 .select('sender_id, receiver_id')
                 .eq('id', messageId)
                 .single();
-
-            console.log('Message data:', message, 'Error:', fetchError);
-
             if (!message) {
-                console.error('Message not found');
                 showInfoModal('Error', 'Message not found.');
                 return;
             }
 
             const { error } = await supabase.from('messages').delete().eq('id', messageId);
-
-            console.log('Delete result - Error:', error);
-
             if (error) {
-                console.error('Delete failed:', error);
                 showInfoModal('Error', 'Failed to delete message.');
                 return;
             }
-
-            console.log('Message deleted successfully, removing from UI');
             removeMessageFromUI(messageId);
 
             const otherUserId = message.sender_id === currentUser.id ? message.receiver_id : message.sender_id;
@@ -3446,7 +4278,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const showNotification = (message) => {
         if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('Pylara', { body: message });
+            new Notification('Palyra', { body: message });
         }
     };
 
@@ -3457,6 +4289,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     ui.messageForm.onsubmit = async (e) => {
         e.preventDefault();
+
+        if (isCurrentlyTyping && currentTypingChannel) {
+            isCurrentlyTyping = false;
+            await currentTypingChannel.send({
+                type: 'broadcast',
+                event: 'typing',
+                payload: { userId: currentUser.id, isTyping: false }
+            });
+        }
+
         const content = ui.messageInput.value.trim();
         if (!content && pendingFiles.length === 0) {
             return;
@@ -3619,7 +4461,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (error) throw error;
 
-            displayServerMessage({ ...data, username: currentUser.username });
             ui.messageInput.value = '';
             return;
         }
@@ -3629,8 +4470,6 @@ document.addEventListener('DOMContentLoaded', () => {
             receiver_id: currentChatFriend.id,
             created_at: new Date().toISOString()
         };
-
-        let loadingOverlay = null;
 
         if (pendingFiles.length > 0) {
             const filePreview = document.getElementById('file-attachment-preview');
@@ -3800,15 +4639,11 @@ document.addEventListener('DOMContentLoaded', () => {
             showInfoModal('Error', 'Failed to send message. Please try again.');
             return;
         }
-
         displayMessage(insertedMessage, currentUser);
         scrollToBottom();
 
         await updateConversationsList();
-
-        const recipientChannel = supabase.channel(`realtime-messages-${currentChatFriend.id}`, {
-            config: { broadcast: { self: false } }
-        });
+        const recipientChannel = supabase.channel(`messages-${currentChatFriend.id}`);
 
         await new Promise((resolve) => {
             recipientChannel.subscribe((status) => {
@@ -3819,9 +4654,8 @@ document.addEventListener('DOMContentLoaded', () => {
         await recipientChannel.send({
             type: 'broadcast',
             event: 'new_message',
-            payload: insertedMessage
+            payload: { messageId: insertedMessage.id }
         });
-
         supabase.removeChannel(recipientChannel);
     };
 
@@ -3834,35 +4668,144 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let typingChannels = {};
 
-    ui.messageInput.addEventListener('input', () => {
+    let typingTimeoutId = null;
+    let isCurrentlyTyping = false;
+    let currentTypingChannel = null;
+    let currentTypingFriendId = null;
+
+    ui.messageInput.addEventListener('input', async () => {
         adjustTextareaHeight();
 
-        if (currentChatFriend) {
-            clearTimeout(typingTimeout);
+        if (currentChatFriend && currentChatType === 'friend') {
+            const hasText = ui.messageInput.value.trim().length > 0;
 
             const userId1 = currentUser.id;
             const userId2 = currentChatFriend.id;
             const channelName = `typing-${userId1 < userId2 ? userId1 : userId2}-${userId1 < userId2 ? userId2 : userId1}`;
 
-            if (!typingChannels[channelName]) {
-                typingChannels[channelName] = supabase.channel(channelName);
-                typingChannels[channelName].subscribe();
+            if (!currentTypingChannel || currentTypingFriendId !== currentChatFriend.id) {
+                if (currentTypingChannel) {
+                    await currentTypingChannel.send({
+                        type: 'broadcast',
+                        event: 'typing',
+                        payload: { userId: currentUser.id, isTyping: false }
+                    });
+                }
+
+                currentTypingFriendId = currentChatFriend.id;
+                currentTypingChannel = supabase.channel(channelName, {
+                    config: {
+                        broadcast: { ack: false }
+                    }
+                });
+
+                await new Promise((resolve) => {
+                    currentTypingChannel.subscribe((status) => {
+                        if (status === 'SUBSCRIBED') {
+                            resolve();
+                        }
+                    });
+                });
+
+                isCurrentlyTyping = false;
             }
 
-            typingChannels[channelName].send({
-                type: 'broadcast',
-                event: 'typing',
-                payload: { userId: currentUser.id, isTyping: true }
-            });
+            if (hasText && !isCurrentlyTyping) {
+                isCurrentlyTyping = true;
 
-            typingTimeout = setTimeout(() => {
-                typingChannels[channelName].send({
+                await currentTypingChannel.send({
+                    type: 'broadcast',
+                    event: 'typing',
+                    payload: { userId: currentUser.id, isTyping: true }
+                });
+            } else if (!hasText && isCurrentlyTyping) {
+                isCurrentlyTyping = false;
+
+                await currentTypingChannel.send({
                     type: 'broadcast',
                     event: 'typing',
                     payload: { userId: currentUser.id, isTyping: false }
                 });
-            }, 2000);
+            }
+
+            clearTimeout(typingTimeoutId);
+
+            if (hasText) {
+                typingTimeoutId = setTimeout(async () => {
+                    isCurrentlyTyping = false;
+                    if (currentTypingChannel) {
+                        await currentTypingChannel.send({
+                            type: 'broadcast',
+                            event: 'typing',
+                            payload: { userId: currentUser.id, isTyping: false }
+                        });
+                    }
+                }, 3000);
+            }
         }
+    });
+
+    const renderBlockedUsers = () => {
+        if (!ui.blockedUsersList) return;
+
+        ui.blockedUsersList.innerHTML = '';
+
+        if (blockedUsers.size === 0) {
+            ui.blockedUsersList.innerHTML = '<p style="text-align: center; color: var(--secondary-text); padding: 2rem;">No blocked users</p>';
+            return;
+        }
+
+        blockedUsers.forEach(async (blockedUserId) => {
+            const { data: blockedUser } = await supabase
+                .from('profiles')
+                .select('id, username, avatar_url')
+                .eq('id', blockedUserId)
+                .single();
+
+            if (!blockedUser) return;
+
+            const userDiv = document.createElement('div');
+            userDiv.className = 'request-item';
+            userDiv.style.marginBottom = '0.5rem';
+
+            userDiv.innerHTML = `
+            <div class="avatar">${blockedUser.avatar_url ? `<img src="${blockedUser.avatar_url}" alt="${blockedUser.username}">` : blockedUser.username[0].toUpperCase()}</div>
+            <div class="request-info" style="flex: 1;">
+                <div class="request-username">${blockedUser.username}</div>
+            </div>
+            <div class="request-actions">
+                <button onclick="window.unblockUser('${blockedUser.id}')" style="background-color: var(--primary-accent);" title="Unblock">
+                    <i class="fa-solid fa-unlock"></i>
+                </button>
+            </div>
+        `;
+
+            ui.blockedUsersList.appendChild(userDiv);
+        });
+    };
+
+    window.unblockUser = async (userId) => {
+        try {
+            const { error } = await supabase
+                .from('blocked_users')
+                .delete()
+                .eq('user_id', currentUser.id)
+                .eq('blocked_user_id', userId);
+
+            if (error) throw error;
+
+            blockedUsers.delete(userId);
+            renderBlockedUsers();
+            showInfo('Success', 'User unblocked successfully');
+        } catch (error) {
+            showInfo('Error', 'Failed to unblock user');
+        }
+    };
+
+    ui.viewBlockedUsersBtn?.addEventListener('click', () => {
+        hideSettingsModal();
+        renderBlockedUsers();
+        showModal(ui.blockedUsersModal);
     });
 
     ui.addFriendForm.onsubmit = async (e) => {
@@ -3871,13 +4814,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!username) {
             return;
         }
-
         const { data: targetUser } = await supabase
             .from('profiles')
             .select('*')
             .eq('username', username)
             .single();
-
         if (!targetUser) {
             showInfoModal('User not found', 'The username you entered does not exist.');
             return;
@@ -3887,18 +4828,34 @@ document.addEventListener('DOMContentLoaded', () => {
             showInfoModal('Cannot add yourself', 'You cannot add yourself as a friend.');
             return;
         }
-
+        const { data: iBlockedThem } = await supabase
+            .from('blocked_users')
+            .select('*')
+            .eq('user_id', currentUser.id)
+            .eq('blocked_user_id', targetUser.id)
+            .maybeSingle();
+        if (iBlockedThem) {
+            showInfoModal('User blocked', 'You have blocked this user. Unblock them first to send a friend request.');
+            return;
+        }
+        const { data: canSend, error: rpcError } = await supabase
+            .rpc('check_can_send_friend_request', {
+                sender_id: currentUser.id,
+                receiver_id: targetUser.id
+            });
+        if (rpcError || !canSend) {
+            showInfoModal('User has blocked you', 'This user has blocked you and cannot receive friend requests from you.');
+            return;
+        }
         const { data: existing } = await supabase
             .from('friendships')
             .select('*')
             .or(`and(user_id.eq.${currentUser.id},friend_id.eq.${targetUser.id}),and(user_id.eq.${targetUser.id},friend_id.eq.${currentUser.id})`)
             .maybeSingle();
-
         if (existing) {
             showInfoModal('Request exists', 'Friend request already exists or you are already friends.');
             return;
         }
-
         const { data: newRequest, error } = await supabase
             .from('friendships')
             .insert([{
@@ -3908,7 +4865,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }])
             .select()
             .single();
-
         if (error) {
             showInfoModal('Error', 'Failed to send friend request.');
             return;
@@ -3917,7 +4873,6 @@ document.addEventListener('DOMContentLoaded', () => {
         ui.friendUsernameInput.value = '';
         hideModal();
         showInfoModal('Request sent', 'Friend request sent successfully!');
-
         const targetUserId = targetUser.id;
         const notifyChannel = supabase.channel(`friend-requests-${targetUserId}`, {
             config: { broadcast: { self: false } }
@@ -3999,13 +4954,16 @@ document.addEventListener('DOMContentLoaded', () => {
         currentChatFriend = null;
         currentChatType = 'friend';
         updateURLPath('messages');
-        ui.sidebar.classList.remove('hidden');
-        ui.chatContainer.classList.remove('active');
-        ui.welcomeScreen.classList.remove('hidden');
-        ui.chatView.classList.add('hidden');
 
         if (window.innerWidth <= 768) {
-            ui.navbarInSidebar.classList.remove('hidden');
+            ui.sidebar.classList.remove('hidden');
+            ui.chatContainer.classList.remove('active');
+            ui.chatView.classList.add('hidden');
+        } else {
+            ui.sidebar.classList.remove('hidden');
+            ui.chatContainer.classList.remove('active');
+            ui.welcomeScreen.classList.remove('hidden');
+            ui.chatView.classList.add('hidden');
         }
     };
 
@@ -4068,28 +5026,96 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     ui.blockUserBtn.onclick = async () => {
-        if (currentChatType === 'friend') {
-            showConfirmationModal(`Block ${currentChatFriend.username}?`, 'This user will be blocked and you will not receive messages from them.', async () => {
+        if (currentChatType === 'friend' && currentChatFriend) {
+            showConfirmation(
+                `Block ${currentChatFriend.username}?`,
+                'This user will be blocked and you will not receive messages from them.',
+                async () => {
+                    const blockedUserId = currentChatFriend.id;
+                    try {
+                        const { data: existingBlock, error: checkError } = await supabase
+                            .from('blocked_users')
+                            .select('*')
+                            .eq('user_id', currentUser.id)
+                            .eq('blocked_user_id', blockedUserId)
+                            .maybeSingle();
+                        if (existingBlock) {
+                            showInfo('Info', 'User is already blocked');
+                            return;
+                        }
+                        const { data: blockData, error: blockError } = await supabase
+                            .from('blocked_users')
+                            .insert([{
+                                user_id: currentUser.id,
+                                blocked_user_id: blockedUserId,
+                                created_at: new Date().toISOString()
+                            }])
+                            .select()
+                            .single();
 
-                const { error } = await supabase
-                    .from('blocked_users')
-                    .insert([{
-                        user_id: currentUser.id,
-                        blocked_user_id: currentChatFriend.id
-                    }]);
+                        if (blockError) {
+                            throw blockError;
+                        }
+                        const { data: friendshipsToDelete, error: fetchError } = await supabase
+                            .from('friendships')
+                            .select('*')
+                            .or(`and(user_id.eq.${currentUser.id},friend_id.eq.${blockedUserId}),and(user_id.eq.${blockedUserId},friend_id.eq.${currentUser.id})`);
+                        const { data: deleteResult, error: deleteError } = await supabase
+                            .from('friendships')
+                            .delete()
+                            .or(`and(user_id.eq.${currentUser.id},friend_id.eq.${blockedUserId}),and(user_id.eq.${blockedUserId},friend_id.eq.${currentUser.id})`)
+                            .select();
 
-                if (error) {
-                    showInfoModal('Error', 'Failed to block user.');
-                    return;
+                        if (deleteError) {
+                        } else {
+                        }
+                        delete friends[blockedUserId];
+                        await loadBlockedUsers();
+                        hideModal();
+                        ui.chatView.classList.add('hidden');
+                        ui.welcomeScreen.classList.remove('hidden');
+                        currentChatFriend = null;
+                        await updateConversationsList();
+                        const channelName = `block-broadcast-${currentUser.id}-${blockedUserId}-${Date.now()}`;
+                        const blockChannel = supabase.channel(channelName);
+
+                        const subscribePromise = new Promise((resolve, reject) => {
+                            const timeout = setTimeout(() => {
+                                reject(new Error('Channel subscription timeout'));
+                            }, 5000);
+
+                            blockChannel.subscribe((status) => {
+                                if (status === 'SUBSCRIBED') {
+                                    clearTimeout(timeout);
+                                    resolve();
+                                } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                                    clearTimeout(timeout);
+                                    reject(new Error(`Channel error: ${status}`));
+                                }
+                            });
+                        });
+
+                        await subscribePromise;
+                        const broadcastPayload = {
+                            blockedBy: currentUser.id,
+                            blockedUser: blockedUserId,
+                            timestamp: Date.now()
+                        };
+                        const sendResult = await blockChannel.send({
+                            type: 'broadcast',
+                            event: 'user_blocked',
+                            payload: broadcastPayload
+                        });
+                        setTimeout(() => {
+                            supabase.removeChannel(blockChannel);
+                        }, 2000);
+                        showInfo('Success', 'User blocked successfully');
+                    } catch (error) {
+                        showInfo('Error', `Failed to block user: ${error.message}`);
+                    }
                 }
-
-                await loadBlockedUsers();
-                hideModal();
-                ui.chatView.classList.add('hidden');
-                ui.welcomeScreen.classList.remove('hidden');
-                await updateConversationsList();
-
-            });
+            );
+        } else {
         }
     };
 
@@ -5495,13 +6521,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         let isDragging = false;
-        let startY, startTranslate;
+        let startY = 0;
+        let currentTranslate = 0;
 
         const dragStart = (e) => {
             if (window.innerWidth > 768) return;
             isDragging = true;
             startY = e.pageY || e.touches[0].pageY;
-            startTranslate = 0;
+            currentTranslate = 0;
             ui.settingsModalPane.style.transition = 'none';
         };
 
@@ -5511,32 +6538,46 @@ document.addEventListener('DOMContentLoaded', () => {
             const diffY = currentY - startY;
 
             if (diffY > 0) {
+                currentTranslate = diffY;
                 ui.settingsModalPane.style.transform = `translateY(${diffY}px)`;
-                console.log('🔧 [Settings Modal] DRAG MOVE - Transform updated:', getComputedStyle(ui.settingsModalPane).transform);
             }
         };
 
         const dragEnd = (e) => {
             if (!isDragging || window.innerWidth > 768) return;
             isDragging = false;
-            console.log('🔧 [Settings Modal] DRAG END - Drag ended, diffY:', diffY);
-            ui.settingsModalPane.style.transition = 'transform 0.3s ease-out';
 
             const currentY = e.pageY || e.changedTouches[0].pageY;
             const diffY = currentY - startY;
 
             if (diffY > 100) {
-                console.log('🔧 [Settings Modal] DRAG END - Threshold exceeded, closing modal');
+                ui.settingsModalPane.style.transition = 'transform 0.3s ease-out';
                 ui.settingsModalPane.style.transform = 'translateY(100%)';
+
+                if (ui.settingsModalBody._scrollListener) {
+                    ui.settingsModalBody.removeEventListener('scroll', ui.settingsModalBody._scrollListener);
+                    delete ui.settingsModalBody._scrollListener;
+                }
+
+                document.documentElement.style.setProperty('--settings-modal-after-opacity', 1);
+
                 setTimeout(() => {
-                    console.log('🔧 [Settings Modal] DRAG END - Calling hideSettingsModal()');
-                    hideSettingsModal();
+                    ui.settingsModalContainer.classList.remove('visible');
+                    ui.settingsModalPane.classList.remove('visible');
                     ui.settingsModalPane.style.transform = '';
-                    console.log('🔧 [Settings Modal] DRAG END - Transform cleared');
+                    ui.settingsModalPane.style.transition = '';
+
+                    if (window.location.pathname === '/settings') {
+                        updateURLPath('personal');
+                    }
                 }, 300);
             } else {
-                console.log('🔧 [Settings Modal] DRAG END - Threshold not exceeded, snapping back');
+                ui.settingsModalPane.style.transition = 'transform 0.3s ease-out';
                 ui.settingsModalPane.style.transform = 'translateY(0)';
+
+                setTimeout(() => {
+                    ui.settingsModalPane.style.transition = '';
+                }, 300);
             }
         };
 
@@ -5582,22 +6623,12 @@ document.addEventListener('DOMContentLoaded', () => {
     setupSettingsDrag();
 
     const showSettingsModal = () => {
-        console.log('🔧 [Settings Modal] SHOW - Starting show animation');
-        console.log('🔧 [Settings Modal] SHOW - Container classes before:', ui.settingsModalContainer.className);
-        console.log('🔧 [Settings Modal] SHOW - Pane classes before:', ui.settingsModalPane.className);
-
         ui.settingsModalContainer.classList.add('visible');
-        console.log('🔧 [Settings Modal] SHOW - Container visible class added');
-
         if (window.innerWidth <= 768) {
-            console.log('🔧 [Settings Modal] SHOW - Mobile detected, adding pane visible class with delay');
             setTimeout(() => {
                 ui.settingsModalPane.classList.add('visible');
-                console.log('🔧 [Settings Modal] SHOW - Pane visible class added after delay');
-                console.log('🔧 [Settings Modal] SHOW - Pane transform:', getComputedStyle(ui.settingsModalPane).transform);
             }, 10);
         } else {
-            console.log('🔧 [Settings Modal] SHOW - Desktop detected, no pane class needed');
         }
 
         const handleSettingsScroll = () => {
@@ -5613,7 +6644,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             document.documentElement.style.setProperty('--settings-modal-after-opacity', opacity);
-            console.log('🔧 [Settings Modal] HANDLE SETTINGS SCROLL - Opacity updated:', opacity);
         };
 
         handleSettingsScroll();
@@ -5622,21 +6652,9 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const hideSettingsModal = () => {
-        console.log('🔧 [Settings Modal] HIDE - Starting hide animation');
-        console.log('🔧 [Settings Modal] HIDE - Container classes before:', ui.settingsModalContainer.className);
-        console.log('🔧 [Settings Modal] HIDE - Pane classes before:', ui.settingsModalPane.className);
-        console.log('🔧 [Settings Modal] HIDE - Pane transform before:', getComputedStyle(ui.settingsModalPane).transform);
-
         if (window.location.pathname === '/settings') {
             updateURLPath('personal');
         }
-
-        console.log('🔧 [Settings Modal] HIDE - Removing pane visible class');
-        ui.settingsModalPane.classList.remove('visible');
-
-        setTimeout(() => {
-            console.log('🔧 [Settings Modal] HIDE - After 100ms - Pane transform:', getComputedStyle(ui.settingsModalPane).transform);
-        }, 100);
 
         if (ui.settingsModalBody._scrollListener) {
             ui.settingsModalBody.removeEventListener('scroll', ui.settingsModalBody._scrollListener);
@@ -5645,11 +6663,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.documentElement.style.setProperty('--settings-modal-after-opacity', 1);
 
-        setTimeout(() => {
-            console.log('🔧 [Settings Modal] HIDE - Removing container visible class after 300ms');
-            console.log('🔧 [Settings Modal] HIDE - Pane transform at 300ms:', getComputedStyle(ui.settingsModalPane).transform);
+        if (window.innerWidth <= 768) {
+            ui.settingsModalPane.classList.remove('visible');
+
+            setTimeout(() => {
+                ui.settingsModalContainer.classList.remove('visible');
+                ui.settingsModalPane.style.transform = '';
+            }, 300);
+        } else {
             ui.settingsModalContainer.classList.remove('visible');
-        }, 300);
+        }
     };
 
     const adjustTextareaHeight = () => {
