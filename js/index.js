@@ -1,4 +1,188 @@
 document.addEventListener('DOMContentLoaded', () => {
+    const securityConfig = {
+        maxLoginAttempts: 5,
+        lockoutDuration: 900000,
+        rateLimits: {
+            messages: { limit: 100, window: 60000 },
+            friendRequests: { limit: 10, window: 300000 },
+            apiCalls: { limit: 200, window: 60000 }
+        }
+    };
+
+    const botDetection = {
+        minFormTime: 3000,
+        maxFormTime: 300000,
+        mouseMovements: 0,
+        keystrokes: 0,
+
+        initFormTracking(formId) {
+            const form = document.getElementById(formId);
+            if (!form) return;
+
+            const timestamp = document.getElementById('signup-timestamp');
+            if (timestamp) timestamp.value = Date.now();
+
+            this.mouseMovements = 0;
+            this.keystrokes = 0;
+
+            const trackMouse = () => this.mouseMovements++;
+            const trackKeys = () => this.keystrokes++;
+
+            form.addEventListener('mousemove', trackMouse);
+            form.addEventListener('keydown', trackKeys);
+
+            form._cleanup = () => {
+                form.removeEventListener('mousemove', trackMouse);
+                form.removeEventListener('keydown', trackKeys);
+            };
+        },
+
+        validateFormSubmission(formId) {
+            const form = document.getElementById(formId);
+            if (!form) return false;
+
+            const honeypotWebsite = form.querySelector('[name="website"]');
+            const honeypotEmail = form.querySelector('[name="email_confirm"]');
+
+            if (honeypotWebsite?.value || honeypotEmail?.value) {
+                return false;
+            }
+
+            const timestamp = document.getElementById('signup-timestamp');
+            if (timestamp?.value) {
+                const timeSpent = Date.now() - parseInt(timestamp.value);
+                if (timeSpent < this.minFormTime || timeSpent > this.maxFormTime) {
+                    return false;
+                }
+            }
+
+            if (this.mouseMovements < 3 && this.keystrokes < 10) {
+                return false;
+            }
+
+            return true;
+        },
+
+        cleanup(formId) {
+            const form = document.getElementById(formId);
+            if (form?._cleanup) {
+                form._cleanup();
+                delete form._cleanup;
+            }
+        }
+    };
+
+    function generateFingerprint() {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.textBaseline = 'top';
+        ctx.font = '14px Arial';
+        ctx.fillText('fingerprint', 2, 2);
+        const canvasData = canvas.toDataURL();
+
+        const fingerprint = {
+            canvas: canvasData.slice(-50),
+            screen: `${screen.width}x${screen.height}x${screen.colorDepth}`,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            language: navigator.language,
+            platform: navigator.platform,
+            vendor: navigator.vendor,
+            plugins: Array.from(navigator.plugins || []).map(p => p.name).slice(0, 3).join(','),
+            touch: 'ontouchstart' in window,
+            cores: navigator.hardwareConcurrency || 0
+        };
+
+        const str = JSON.stringify(fingerprint);
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash;
+        }
+        return Math.abs(hash).toString(36);
+    }
+
+    const sessionFingerprint = generateFingerprint();
+    const suspiciousActions = new Map();
+
+    function trackSuspiciousActivity(userId, action) {
+        const key = `${userId}_${action}`;
+        const now = Date.now();
+        const activities = suspiciousActions.get(key) || [];
+
+        activities.push(now);
+
+        const recentActivities = activities.filter(time => now - time < 60000);
+        suspiciousActions.set(key, recentActivities);
+
+        if (recentActivities.length > 20) {
+            return false;
+        }
+
+        return true;
+    }
+
+    const rateLimiters = new Map();
+    const loginAttempts = new Map();
+
+    function checkRateLimit(key, type) {
+        const config = securityConfig.rateLimits[type];
+        if (!config) return true;
+
+        const now = Date.now();
+        const limiter = rateLimiters.get(key) || { count: 0, resetTime: now + config.window };
+
+        if (now > limiter.resetTime) {
+            limiter.count = 0;
+            limiter.resetTime = now + config.window;
+        }
+
+        if (limiter.count >= config.limit) {
+            const waitTime = Math.ceil((limiter.resetTime - now) / 1000);
+            showInfo('Rate Limited', `Please wait ${waitTime} seconds before trying again.`);
+            return false;
+        }
+
+        limiter.count++;
+        rateLimiters.set(key, limiter);
+        return true;
+    }
+
+    function sanitizeInput(input) {
+        const div = document.createElement('div');
+        div.textContent = input;
+        return div.innerHTML.replace(/[<>\"']/g, char => {
+            const entities = { '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+            return entities[char];
+        });
+    }
+
+    function validateUsername(username) {
+        const regex = /^[a-zA-Z0-9_-]{3,20}$/;
+        return regex.test(username);
+    }
+
+    function validatePassword(password) {
+        return password.length >= 8 &&
+            /[A-Z]/.test(password) &&
+            /[a-z]/.test(password) &&
+            /[0-9]/.test(password);
+    }
+
+    async function verifyHCaptcha(token) {
+        try {
+            const response = await fetch('/api/verify-captcha', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token })
+            });
+            const data = await response.json();
+            return data.success;
+        } catch {
+            return false;
+        }
+    }
+
     const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
     const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -4290,6 +4474,14 @@ document.addEventListener('DOMContentLoaded', () => {
     ui.messageForm.onsubmit = async (e) => {
         e.preventDefault();
 
+        const messageKey = `msg_${currentUser.id}_${sessionFingerprint}`;
+        if (!checkRateLimit(messageKey, 'messages')) return;
+
+        if (!trackSuspiciousActivity(currentUser.id, 'message')) {
+            showInfo('Slow Down', 'You are sending messages too quickly.');
+            return;
+        }
+
         if (isCurrentlyTyping && currentTypingChannel) {
             isCurrentlyTyping = false;
             await currentTypingChannel.send({
@@ -4810,7 +5002,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     ui.addFriendForm.onsubmit = async (e) => {
         e.preventDefault();
-        const username = ui.friendUsernameInput.value.trim();
+
+        const friendReqKey = `friend_${currentUser.id}_${sessionFingerprint}`;
+        if (!checkRateLimit(friendReqKey, 'friendRequests')) return;
+
+        if (!trackSuspiciousActivity(currentUser.id, 'friendRequest')) {
+            showInfo('Slow Down', 'Please wait before sending another friend request.');
+            return;
+        }
+
+        const username = sanitizeInput(ui.friendUsernameInput.value.trim());
         if (!username) {
             return;
         }
@@ -5133,13 +5334,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     ui.loginForm.onsubmit = async (e) => {
         e.preventDefault();
-        const username = document.getElementById('login-username').value.trim();
+        const username = sanitizeInput(document.getElementById('login-username').value.trim());
         const password = document.getElementById('login-password').value;
 
         if (!username || !password) {
             showInfoModal('Invalid credentials', 'Please enter both username and password.');
             return;
         }
+
+        const attemptKey = `login_${username}`;
+        const attempts = loginAttempts.get(attemptKey) || { count: 0, lockedUntil: 0 };
+
+        if (Date.now() < attempts.lockedUntil) {
+            const waitMinutes = Math.ceil((attempts.lockedUntil - Date.now()) / 60000);
+            showInfoModal('Account Locked', `Too many failed attempts. Try again in ${waitMinutes} minutes.`);
+            return;
+        }
+
+        if (!checkRateLimit(attemptKey, 'apiCalls')) return;
 
         try {
             const { data: profile, error: profileError } = await supabase
@@ -5154,6 +5366,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (!profile) {
+                attempts.count++;
+                if (attempts.count >= securityConfig.maxLoginAttempts) {
+                    attempts.lockedUntil = Date.now() + securityConfig.lockoutDuration;
+                }
+                loginAttempts.set(attemptKey, attempts);
                 showInfoModal('Username not found', 'The username you entered does not exist.');
                 return;
             }
@@ -5164,10 +5381,16 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (loginError) {
+                attempts.count++;
+                if (attempts.count >= securityConfig.maxLoginAttempts) {
+                    attempts.lockedUntil = Date.now() + securityConfig.lockoutDuration;
+                }
+                loginAttempts.set(attemptKey, attempts);
                 showInfoModal('Invalid credentials', 'Incorrect username or password.');
                 return;
             }
 
+            loginAttempts.delete(attemptKey);
             location.reload();
         } catch (error) {
             showInfoModal('Error', 'An unexpected error occurred. Please try again.');
@@ -5176,16 +5399,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
     ui.signupForm.onsubmit = async (e) => {
         e.preventDefault();
-        const username = document.getElementById('signup-username').value.trim();
-        const password = document.getElementById('signup-password').value;
 
-        if (!username || username.length < 3) {
-            showInfoModal('Invalid username', 'Username must be at least 3 characters long.');
+        if (!botDetection.validateFormSubmission('signup-form')) {
+            showInfoModal('Validation Failed', 'Please complete the form naturally.');
+            botDetection.cleanup('signup-form');
             return;
         }
 
-        if (!password || password.length < 6) {
-            showInfoModal('Invalid password', 'Password must be at least 6 characters long.');
+        const username = sanitizeInput(document.getElementById('signup-username').value.trim());
+        const password = document.getElementById('signup-password').value;
+
+        if (!validateUsername(username)) {
+            showInfoModal('Invalid username', 'Username must be 3-20 characters and contain only letters, numbers, underscores, and hyphens.');
+            return;
+        }
+
+        if (!validatePassword(password)) {
+            showInfoModal('Weak password', 'Password must be at least 8 characters with uppercase, lowercase, and numbers.');
+            return;
+        }
+
+        const signupKey = `signup_${sessionFingerprint}`;
+        if (!checkRateLimit(signupKey, 'apiCalls')) return;
+
+        if (!trackSuspiciousActivity(sessionFingerprint, 'signup')) {
+            showInfoModal('Too Many Attempts', 'Please wait a moment before trying again.');
             return;
         }
 
@@ -5213,7 +5451,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 password: password,
                 options: {
                     data: {
-                        username: username
+                        username: username,
+                        fingerprint: sessionFingerprint
                     }
                 }
             });
@@ -5231,14 +5470,28 @@ document.addEventListener('DOMContentLoaded', () => {
                     .update({ username: username })
                     .eq('id', authData.user.id);
 
-                if (updateError) {
-                }
-
+                botDetection.cleanup('signup-form');
                 location.reload();
             }
         } catch (error) {
             showInfoModal('Error', 'An unexpected error occurred. Please try again.');
         }
+    };
+
+    ui.showSignup.onclick = (e) => {
+        e.preventDefault();
+        ui.loginForm.classList.add('hidden');
+        ui.signupForm.classList.remove('hidden');
+        ui.authStatus.textContent = '';
+        botDetection.initFormTracking('signup-form');
+    };
+
+    ui.showLogin.onclick = (e) => {
+        e.preventDefault();
+        ui.signupForm.classList.add('hidden');
+        ui.loginForm.classList.remove('hidden');
+        ui.authStatus.textContent = '';
+        botDetection.cleanup('signup-form');
     };
 
     ui.fontSizeSelect.onchange = () => {

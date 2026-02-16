@@ -1,0 +1,87 @@
+       .main-content {
+           max-width: 900px;
+           margin: 0 auto;
+           padding: 2rem 1rem;
+           min-height: 100vh;
+       }
+
+       .about-content-wrapper {
+           padding: 2.5rem;
+       }
+
+       .about-content-wrapper h2 {
+           font-size: 2rem;
+           margin-bottom: 0.5rem;
+           color: var(--header-text);
+       }
+
+       .about-content-wrapper h3 {
+           font-size: 1.5rem;
+           margin-top: 2rem;
+           margin-bottom: 1rem;
+           color: var(--header-text);
+       }
+
+       .about-content-wrapper h4 {
+           font-size: 1.2rem;
+           margin-top: 1.5rem;
+           margin-bottom: 0.75rem;
+           color: var(--primary-text);
+       }
+
+       .about-content-wrapper p {
+           margin-bottom: 1rem;
+           line-height: 1.7;
+           color: var(--primary-text);
+       }
+
+       .about-content-wrapper ul,
+       .about-content-wrapper ol {
+           margin-bottom: 1rem;
+           margin-left: 2rem;
+           line-height: 1.7;
+           color: var(--primary-text);
+       }
+
+       .about-content-wrapper li {
+           margin-bottom: 0.5rem;
+       }
+
+       .about-content-wrapper a {
+           color: var(--primary-accent);
+           text-decoration: none;
+           font-weight: 600;
+       }
+
+       .about-content-wrapper a:hover {
+           text-decoration: underline;
+       }
+
+       .about-content-wrapper strong {
+           color: var(--header-text);
+       }
+
+       .back-link {
+           display: inline-flex;
+           align-items: center;
+           gap: 0.5rem;
+           margin-bottom: 2rem;
+           color: var(--secondary-text);
+           text-decoration: none;
+           transition: var(--transition-fast);
+       }
+
+       .back-link:hover {
+           color: var(--primary-text);
+       }
+
+       @media (max-width: 768px) {
+           .about-content-wrapper {
+               padding: 1.5rem;
+           }
+       }
+
+       #auth-container {
+           display: flex !important;
+           min-height: auto !important;
+       }

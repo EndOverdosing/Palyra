@@ -1,5 +1,44 @@
 {
+    "headers": [
+        {
+            "source": "/(.*)",
+            "headers": [
+                {
+                    "key": "Content-Security-Policy",
+                    "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; img-src 'self' data: https: blob:; media-src 'self' https: blob:; connect-src 'self' https://mfjqbejulpkuoutgeuuw.supabase.co wss://*.supabase.co https://0.peerjs.com wss://0.peerjs.com https://api.microlink.io; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com"
+                },
+                {
+                    "key": "X-Frame-Options",
+                    "value": "SAMEORIGIN"
+                },
+                {
+                    "key": "X-Content-Type-Options",
+                    "value": "nosniff"
+                },
+                {
+                    "key": "Referrer-Policy",
+                    "value": "strict-origin-when-cross-origin"
+                },
+                {
+                    "key": "Permissions-Policy",
+                    "value": "camera=(self), microphone=(self), geolocation=()"
+                }
+            ]
+        }
+    ],
     "rewrites": [
+        {
+            "source": "/privacy-policy",
+            "destination": "/privacy-policy/index.html"
+        },
+        {
+            "source": "/terms-of-service",
+            "destination": "/terms-of-service/index.html"
+        },
+        {
+            "source": "/documentation",
+            "destination": "/documentation/index.html"
+        },
         {
             "source": "/((?!.*\\.).*)",
             "destination": "/index.html"

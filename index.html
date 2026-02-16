@@ -32,8 +32,16 @@
 
 <body>
     <div id="auth-container" class="hidden">
+        <div class="auth-background">
+            <div class="auth-grid"></div>
+        </div>
         <div class="auth-card">
-            <h1 class="auth-title">Palyra</h1>
+            <div class="auth-logo">
+                <div class="logo-icon">
+                    <img src="/images/icon.png" alt="Palyra logo" width="50" height="50">
+                </div>
+                <h1 class="auth-title">Palyra</h1>
+            </div>
             <p class="auth-subtitle">Secure, real-time communication.</p>
             <div id="auth-forms">
                 <form id="login-form">
@@ -46,6 +54,9 @@
                         <label for="login-password">Password</label>
                         <input type="password" id="login-password" required autocomplete="current-password">
                     </div>
+                    <input type="text" name="website" class="hp-field" tabindex="-1" autocomplete="off">
+                    <input type="email" name="email_confirm" class="hp-field" tabindex="-1" autocomplete="off">
+                    <input type="hidden" id="signup-timestamp" value="">
                     <button type="submit">Login</button>
                     <p class="auth-switch">Don't have an account? <a href="#" id="show-signup">Sign Up</a></p>
                 </form>
@@ -66,6 +77,43 @@
             </div>
             <p id="auth-status" class="status-message"></p>
         </div>
+
+        <footer class="auth-footer">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h4>Palyra</h4>
+                    <p>Decentralized, peer-to-peer communication built for privacy and security.</p>
+                </div>
+                <div class="footer-section">
+                    <h4>Resources</h4>
+                    <a href="/privacy-policy" target="_blank" rel="noopener noreferrer">Privacy
+                        Policy</a>
+                    <a href="/terms-of-service" target="_blank" rel="noopener noreferrer">Terms of
+                        Service</a>
+                    <a href="/documentation" target="_blank" rel="noopener noreferrer">Documentation</a>
+                </div>
+                <div class="footer-section">
+                    <h4>Support</h4>
+                    <a href="https://github.com/endoverdosing/palyra" target="_blank" rel="noopener noreferrer">Send
+                        Feedback</a>
+                </div>
+                <div class="footer-section">
+                    <h4>Connect</h4>
+                    <div class="social-links">
+                        <a href="https://github.com/endoverdosing/Palyra" target="_blank" rel="noopener noreferrer">
+                            <i class="fab fa-github"></i> GitHub
+                        </a>
+                        <a href="https://discord.gg/94KwX2ZtzK" target="_blank" rel="noopener noreferrer">
+                            <i class="fab fa-discord"></i> Discord
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-divider"></div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 Palyra. End-to-end encrypted messaging.</p>
+            </div>
+        </footer>
     </div>
 
     <div id="main-app" class="hidden">
@@ -425,6 +473,14 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    <div class="bottom-overlay">
+        <img src="public/images/icon.png" alt="Logo" class="overlay-logo">
+        Join Our Discord
+        <a href="https://discord.com/invite/YOUR_INVITE_CODE" target="_blank">
+            <button class="overlay-button"><i class="fa-solid fa-arrow-right"></i></button>
+        </a>
     </div>
 
     <audio id="incoming-call-audio" src="/audios/calling.mp3" loop preload="auto"></audio>

@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Palyra - Secure, decentralized, real-time communication.">
+    <meta property="og:image" content="/images/banner.png" />
+    <meta property="og:title" content="Palyra" />
+    <meta property="og:description" content="Palyra - Secure, decentralized, real-time communication.">
+    <meta property="og:url" content="https://Palyra.vercel.app/">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Palyra">
+    <meta name="twitter:description" content="Palyra - Secure, decentralized, real-time communication.">
+    <meta name="twitter:image" content="/images/banner.png">
+
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="format-detection" content="telephone=no">
+
+    <meta name="theme-color" content="transparent" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="transparent" media="(prefers-color-scheme: light)">
+
+    <title>Palyra - Privacy Policy</title>
+    <link rel="icon" href="/images/favicon.ico">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/styling/index.css">
+    <link rel="stylesheet" href="/styling/other.css">
+
+    <link rel="manifest" href="/manifest.json">
+</head>
+
+<body>
+    <script>
+        const savedTheme = localStorage.getItem('userSettings');
+        if (savedTheme) {
+            const settings = JSON.parse(savedTheme);
+            document.documentElement.setAttribute('data-theme', settings.theme || 'dark');
+        } else {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        }
+    </script>
+
+    <main class="main-content">
+        <div class="about-content-wrapper">
+            <h2>Privacy Policy</h2>
+            <p><strong>Effective Date: </strong>February 15, 2026</p>
+
+            <h3>1. Introduction</h3>
+            <p>Welcome to Palyra! This Privacy Policy explains how we collect, use, disclose, and safeguard your
+                information
+                when you use our secure, decentralized communication platform. By using Palyra, you agree to the
+                collection
+                and use of information in accordance with this policy. If you do not agree with the terms of this
+                Privacy
+                Policy, please do not access the service.</p>
+
+            <h3>2. Information We Collect</h3>
+            <p>We collect several types of information to provide and improve our service:</p>
+
+            <h4>2.1 Account Information</h4>
+            <ul>
+                <li><strong>Username:</strong> A unique identifier you choose when creating your account.</li>
+                <li><strong>Password:</strong> Securely hashed and stored using industry-standard encryption.</li>
+                <li><strong>Profile Information:</strong> Optional avatar images and profile preferences.</li>
+            </ul>
+
+            <h4>2.2 Communication Data</h4>
+            <ul>
+                <li><strong>Messages:</strong> Text messages sent between users and in servers are stored in our
+                    database.
+                </li>
+                <li><strong>Files:</strong> Images, videos, and other files you share are stored in our secure storage
+                    system.</li>
+                <li><strong>Call Metadata:</strong> Call duration and timestamps (not call content).</li>
+            </ul>
+
+            <h4>2.3 Usage Information</h4>
+            <ul>
+                <li><strong>Device Information:</strong> Browser fingerprint, screen resolution, timezone, and platform
+                    information for security purposes.</li>
+                <li><strong>Online Status:</strong> Last seen timestamps and online/offline status (controllable in
+                    settings).</li>
+                <li><strong>Interaction Data:</strong> Friend lists, blocked users, server memberships.</li>
+            </ul>
+
+            <h3>3. How We Use Your Information</h3>
+            <p>We use the collected information for the following purposes:</p>
+            <ul>
+                <li><strong>Service Provision:</strong> To create and manage your account, deliver messages, and
+                    facilitate
+                    communications.</li>
+                <li><strong>Security:</strong> To detect and prevent fraud, abuse, bot activity, and unauthorized access
+                    through rate limiting and fingerprinting.</li>
+                <li><strong>Feature Enhancement:</strong> To provide typing indicators, read receipts, online status,
+                    and
+                    other real-time features.</li>
+                <li><strong>Notifications:</strong> To send push notifications for new messages and friend requests (if
+                    enabled).</li>
+                <li><strong>Service Improvement:</strong> To analyze usage patterns and improve our platform's
+                    performance
+                    and features.</li>
+            </ul>
+
+            <h3>4. End-to-End Encryption</h3>
+            <p><strong>Video and Audio Calls:</strong> All video and audio calls use peer-to-peer WebRTC technology with
+                end-to-end encryption. Palyra never sees, stores, or has access to your call content. Call data is
+                transmitted directly between participants.</p>
+            <p><strong>Text Messages:</strong> While text messages are stored on our servers to enable features like
+                message
+                history and cross-device sync, we implement strong security measures to protect your data. Future
+                updates
+                may include optional end-to-end encryption for text messages.</p>
+
+            <h3>5. Information Sharing and Disclosure</h3>
+            <p>We do not sell, trade, or rent your personal information to third parties. We may share information only
+                in
+                the following circumstances:</p>
+            <ul>
+                <li><strong>With Your Consent:</strong> When you explicitly agree to share information.</li>
+                <li><strong>Service Providers:</strong> With trusted third-party services (like Supabase) that help us
+                    operate our platform, bound by confidentiality agreements.</li>
+                <li><strong>Legal Requirements:</strong> When required by law, subpoena, or other legal process.</li>
+                <li><strong>Safety and Security:</strong> To protect the rights, property, or safety of Palyra, our
+                    users,
+                    or others.</li>
+            </ul>
+
+            <h3>6. Data Storage and Security</h3>
+            <p>We implement industry-standard security measures to protect your data:</p>
+            <ul>
+                <li>Passwords are hashed using secure algorithms before storage.</li>
+                <li>All data transmissions use HTTPS/TLS encryption.</li>
+                <li>Database access is restricted and monitored.</li>
+                <li>Regular security audits and updates are performed.</li>
+                <li>Rate limiting and bot detection prevent abuse.</li>
+            </ul>
+            <p>Your data is stored on secure servers provided by Supabase, which complies with SOC 2 Type II standards.
+            </p>
+
+            <h3>7. Your Privacy Rights and Choices</h3>
+            <p>You have the following rights regarding your personal information:</p>
+            <ul>
+                <li><strong>Access:</strong> You can view your account information in settings.</li>
+                <li><strong>Correction:</strong> You can update your username and avatar at any time.</li>
+                <li><strong>Deletion:</strong> You can request account deletion by contacting support.</li>
+                <li><strong>Privacy Controls:</strong> You can disable online status, read receipts, and notifications
+                    in
+                    settings.</li>
+                <li><strong>Block Users:</strong> You can block users to prevent them from contacting you.</li>
+                <li><strong>Export Data:</strong> You can request a copy of your data by contacting support.</li>
+            </ul>
+
+            <h3>8. Data Retention</h3>
+            <p>We retain your information as long as your account is active or as needed to provide services. When you
+                delete your account:</p>
+            <ul>
+                <li>Your profile and account information are permanently deleted.</li>
+                <li>Your messages remain visible to other participants but are anonymized.</li>
+                <li>Files you uploaded are deleted from our storage within 30 days.</li>
+                <li>Some data may be retained for legal compliance or security purposes for up to 90 days.</li>
+            </ul>
+
+            <h3>9. Third-Party Services</h3>
+            <p>Palyra uses the following third-party services:</p>
+            <ul>
+                <li><strong>Supabase:</strong> For database, authentication, storage, and real-time functionality. See
+                    <a href="https://supabase.com/privacy" target="_blank" rel="noopener noreferrer">Supabase Privacy
+                        Policy</a>.
+                </li>
+                <li><strong>PeerJS:</strong> For peer-to-peer WebRTC signaling. No personal data is shared beyond
+                    connection
+                    establishment.</li>
+                <li><strong>CDN Providers:</strong> For serving static assets like Font Awesome icons.</li>
+            </ul>
+            <p>These services have their own privacy policies, and we encourage you to review them.</p>
+
+            <h3>10. Children's Privacy</h3>
+            <p>Palyra is not intended for users under the age of 13. We do not knowingly collect personal information
+                from
+                children under 13. If you are a parent or guardian and believe your child has provided us with personal
+                information, please contact us, and we will delete such information from our systems.</p>
+
+            <h3>11. International Data Transfers</h3>
+            <p>Your information may be transferred to and maintained on servers located outside of your state, province,
+                country, or other governmental jurisdiction where data protection laws may differ. By using Palyra, you
+                consent to the transfer of your information to these locations.</p>
+
+            <h3>12. Changes to This Privacy Policy</h3>
+            <p>We may update our Privacy Policy from time to time. We will notify you of any significant changes by
+                posting
+                the new Privacy Policy on this page and updating the "Effective Date" at the top. You are advised to
+                review
+                this Privacy Policy periodically for any changes. Changes are effective when posted on this page.</p>
+
+            <h3>13. Contact Us</h3>
+            <p>If you have any questions about this Privacy Policy, please contact us:</p>
+            <ul>
+                <li><strong>Email:</strong> privacy@palyra.com</li>
+                <li><strong>Discord:</strong> <a href="https://discord.gg/palyra" target="_blank"
+                        rel="noopener noreferrer">Join our community</a></li>
+                <li><strong>GitHub:</strong> <a href="https://github.com/palyra/issues" target="_blank"
+                        rel="noopener noreferrer">Open an issue</a></li>
+            </ul>
+        </div>
+    </main>
+
+    <div id="auth-container" class="hidden">
+        <footer class="auth-footer">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h4>Palyra</h4>
+                    <p>Decentralized, peer-to-peer communication built for privacy and security.</p>
+                </div>
+                <div class="footer-section">
+                    <h4>Resources</h4>
+                    <a href="/privacy-policy" target="_blank" rel="noopener noreferrer">Privacy
+                        Policy</a>
+                    <a href="/terms-of-service" target="_blank" rel="noopener noreferrer">Terms of
+                        Service</a>
+                    <a href="/documentation" target="_blank" rel="noopener noreferrer">Documentation</a>
+                </div>
+                <div class="footer-section">
+                    <h4>Support</h4>
+                    <a href="https://github.com/endoverdosing/palyra" target="_blank" rel="noopener noreferrer">Send
+                        Feedback</a>
+                </div>
+                <div class="footer-section">
+                    <h4>Connect</h4>
+                    <div class="social-links">
+                        <a href="https://github.com/endoverdosing/Palyra" target="_blank" rel="noopener noreferrer">
+                            <i class="fab fa-github"></i> GitHub
+                        </a>
+                        <a href="https://discord.gg/94KwX2ZtzK" target="_blank" rel="noopener noreferrer">
+                            <i class="fab fa-discord"></i> Discord
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-divider"></div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 Palyra. End-to-end encrypted messaging.</p>
+            </div>
+        </footer>
+    </div>
+
+</body>
+
+</html>

@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Palyra - Secure, decentralized, real-time communication.">
+    <meta property="og:image" content="/images/banner.png" />
+    <meta property="og:title" content="Palyra" />
+    <meta property="og:description" content="Palyra - Secure, decentralized, real-time communication.">
+    <meta property="og:url" content="https://Palyra.vercel.app/">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Palyra">
+    <meta name="twitter:description" content="Palyra - Secure, decentralized, real-time communication.">
+    <meta name="twitter:image" content="/images/banner.png">
+
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="format-detection" content="telephone=no">
+
+    <meta name="theme-color" content="transparent" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="transparent" media="(prefers-color-scheme: light)">
+
+    <title>Palyra - Documentation</title>
+    <link rel="icon" href="/images/favicon.ico">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/styling/index.css">
+    <link rel="stylesheet" href="/styling/other.css">
+
+    <link rel="manifest" href="/manifest.json">
+</head>
+
+<body>
+    <script>
+        const savedTheme = localStorage.getItem('userSettings');
+        if (savedTheme) {
+            const settings = JSON.parse(savedTheme);
+            document.documentElement.setAttribute('data-theme', settings.theme || 'dark');
+        } else {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        }
+    </script>
+
+    <main class="main-content">
+        <div class="about-content-wrapper">
+            <h2>Documentation</h2>
+            <p><strong>Last Updated: </strong>February 15, 2026</p>
+
+            <h3>1. Getting Started</h3>
+            <p>Welcome to Palyra! This documentation will help you understand and make the most of our secure
+                communication
+                platform.</p>
+
+            <h4>1.1 Creating an Account</h4>
+            <ol>
+                <li>Visit the Palyra website and click "Sign Up".</li>
+                <li>Choose a unique username (3-20 characters, letters, numbers, underscores, and hyphens only).</li>
+                <li>Create a strong password (minimum 8 characters with uppercase, lowercase, and numbers).</li>
+                <li>Click "Sign Up" to create your account.</li>
+            </ol>
+            <p><strong>Note:</strong> Your username is permanent and visible to other users. Choose carefully!</p>
+
+            <h4>1.2 Logging In</h4>
+            <p>Enter your username and password on the login page. For security, accounts are locked for 15 minutes
+                after 5
+                failed login attempts.</p>
+
+            <h3>2. User Interface Overview</h3>
+            <h4>2.1 Sidebar</h4>
+            <ul>
+                <li><strong>Profile Section:</strong> Shows your avatar and username. Click settings icon to customize.
+                </li>
+                <li><strong>Notifications:</strong> Bell icon displays unread notifications count.</li>
+                <li><strong>Add Friend:</strong> Plus icon to send friend requests.</li>
+                <li><strong>Conversations List:</strong> Shows all your active chats and servers.</li>
+                <li><strong>Navigation Tabs:</strong> Switch between "Personal" (direct messages) and "Global"
+                    (servers).
+                </li>
+            </ul>
+
+            <h4>2.2 Chat Area</h4>
+            <ul>
+                <li><strong>Header:</strong> Displays friend/server name, status, and action buttons (call, options).
+                </li>
+                <li><strong>Messages:</strong> Scrollable message history with timestamps.</li>
+                <li><strong>Input Bar:</strong> Type messages, attach files, and send messages.</li>
+            </ul>
+
+            <h3>3. Friend Management</h3>
+            <h4>3.1 Adding Friends</h4>
+            <ol>
+                <li>Click the "+" button in the sidebar.</li>
+                <li>Enter the exact username of the person you want to add.</li>
+                <li>Click "Send Request".</li>
+                <li>Wait for them to accept your request.</li>
+            </ol>
+
+            <h4>3.2 Managing Friend Requests</h4>
+            <ul>
+                <li>Click "Pending Requests" in your conversations list to see incoming requests.</li>
+                <li>Accept or decline requests with the checkmark or X buttons.</li>
+                <li>Declined requests are permanently removed.</li>
+            </ul>
+
+            <h4>3.3 Blocking Users</h4>
+            <ol>
+                <li>Open a chat with the user.</li>
+                <li>Click the three-dot menu in the chat header.</li>
+                <li>Select "Block User".</li>
+                <li>Confirm the action.</li>
+            </ol>
+            <p>Blocked users cannot send you messages or see your online status. Manage blocked users in Settings →
+                Privacy.
+            </p>
+
+            <h3>4. Messaging Features</h3>
+            <h4>4.1 Sending Messages</h4>
+            <ul>
+                <li>Type in the input box at the bottom of the chat.</li>
+                <li>Press Enter to send (Shift+Enter for new line).</li>
+                <li>Messages support plain text and URLs (auto-linked).</li>
+            </ul>
+
+            <h4>4.2 File Sharing</h4>
+            <ol>
+                <li>Click the paperclip icon in the input bar.</li>
+                <li>Select one or more files (images, videos, documents, etc.).</li>
+                <li>Preview appears above the input bar.</li>
+                <li>Remove files by clicking the X on each preview.</li>
+                <li>Add a message (optional) and send.</li>
+            </ol>
+            <p><strong>File Limits:</strong> Maximum 25MB per file. Images over 5MB are automatically compressed.</p>
+
+            <h4>4.3 Message Actions</h4>
+            <p>Right-click (or long-press on mobile) any message to:</p>
+            <ul>
+                <li><strong>Reply:</strong> Quote and respond to a specific message.</li>
+                <li><strong>React:</strong> Add emoji reactions (👍 ❤️ 😂 😮 😢 😡 🎉 🔥).</li>
+                <li><strong>Edit:</strong> Modify your own messages (shows "edited" label).</li>
+                <li><strong>Delete:</strong> Permanently remove your messages.</li>
+                <li><strong>Copy Text:</strong> Copy message content to clipboard.</li>
+            </ul>
+
+            <h4>4.4 Link Previews</h4>
+            <p>When you send a URL, Palyra automatically generates a preview with title, description, and thumbnail
+                (when
+                available). Powered by Microlink API.</p>
+
+            <h4>4.5 Typing Indicators</h4>
+            <p>See when your friend is typing a message. The indicator appears at the bottom of the chat and disappears
+                after 3 seconds of inactivity.</p>
+
+            <h3>5. Video & Audio Calls</h3>
+            <h4>5.1 Starting a Call</h4>
+            <ol>
+                <li>Open a chat with a friend.</li>
+                <li>Click the video camera icon in the chat header.</li>
+                <li>Grant camera and microphone permissions when prompted.</li>
+                <li>Wait for your friend to accept the call.</li>
+            </ol>
+            <p><strong>Important:</strong> Video calls require HTTPS. Use localhost for testing or deploy with SSL.</p>
+
+            <h4>5.2 Call Controls</h4>
+            <ul>
+                <li><strong>Mute/Unmute:</strong> Toggle microphone on/off.</li>
+                <li><strong>Video On/Off:</strong> Enable or disable your camera.</li>
+                <li><strong>Screen Share:</strong> Share your screen (desktop only).</li>
+                <li><strong>End Call:</strong> Hang up and return to chat.</li>
+                <li><strong>Camera Flip:</strong> Switch between front/back camera (mobile only).</li>
+            </ul>
+
+            <h4>5.3 Call Quality</h4>
+            <p>Calls use peer-to-peer WebRTC technology with automatic quality adjustment based on network conditions.
+                For
+                best results:</p>
+            <ul>
+                <li>Use a stable Wi-Fi or wired connection.</li>
+                <li>Close unnecessary browser tabs and applications.</li>
+                <li>Ensure good lighting for video calls.</li>
+                <li>Use headphones to prevent echo.</li>
+            </ul>
+
+            <h3>6. Servers (Group Chats)</h3>
+            <h4>6.1 Creating a Server</h4>
+            <ol>
+                <li>Navigate to the "Global" tab.</li>
+                <li>Click the "+" button.</li>
+                <li>Enter a server name.</li>
+                <li>Choose public or private (password-protected).</li>
+                <li>Click "Create Server".</li>
+            </ol>
+
+            <h4>6.2 Joining Servers</h4>
+            <ul>
+                <li><strong>Public Servers:</strong> Click any server in the list to join instantly.</li>
+                <li><strong>Private Servers:</strong> Enter the password when prompted.</li>
+            </ul>
+
+            <h4>6.3 Server Management (Owner Only)</h4>
+            <p>As a server owner, you can:</p>
+            <ul>
+                <li><strong>View Members:</strong> See all server participants.</li>
+                <li><strong>Kick Members:</strong> Remove disruptive users.</li>
+                <li><strong>Delete Server:</strong> Permanently remove the server and all its messages.</li>
+            </ul>
+            <p>Access these options by clicking the info icon in the server chat header.</p>
+
+            <h4>6.4 Leaving Servers</h4>
+            <ol>
+                <li>Open the server chat.</li>
+                <li>Click the three-dot menu.</li>
+                <li>Select "Leave Server".</li>
+                <li>Confirm the action.</li>
+            </ol>
+
+            <h3>7. Settings & Customization</h3>
+            <h4>7.1 Profile Settings</h4>
+            <ul>
+                <li><strong>Change Avatar:</strong> Click your avatar in settings and upload an image (max 25MB,
+                    auto-compressed).</li>
+                <li><strong>Change Username:</strong> Click "Change Username" and enter a new unique username.</li>
+            </ul>
+
+            <h4>7.2 Appearance</h4>
+            <ul>
+                <li><strong>Dark Mode:</strong> Toggle between light and dark themes.</li>
+                <li><strong>Font Size:</strong> Choose Small, Medium, or Large text size.</li>
+            </ul>
+
+            <h4>7.3 Notifications</h4>
+            <ul>
+                <li><strong>Enable Notifications:</strong> Receive browser notifications for new messages.</li>
+                <li><strong>Message Sounds:</strong> Play sound effects when receiving messages.</li>
+            </ul>
+
+            <h4>7.4 Privacy</h4>
+            <ul>
+                <li><strong>Show Online Status:</strong> Let friends see when you're online.</li>
+                <li><strong>Read Receipts:</strong> Let friends know when you've read their messages.</li>
+                <li><strong>Blocked Users:</strong> View and manage your blocked users list.</li>
+            </ul>
+
+            <h3>8. Security & Privacy</h3>
+            <h4>8.1 End-to-End Encryption</h4>
+            <p>All video and audio calls are end-to-end encrypted using WebRTC technology. Palyra servers never see or
+                store
+                call content—only connection metadata (duration, participants).</p>
+
+            <h4>8.2 Security Features</h4>
+            <ul>
+                <li><strong>Password Hashing:</strong> Passwords are never stored in plain text.</li>
+                <li><strong>Rate Limiting:</strong> Prevents spam and abuse (100 messages/minute, 10 friend requests/5
+                    minutes).</li>
+                <li><strong>Bot Detection:</strong> Honeypot fields and interaction tracking prevent automated abuse.
+                </li>
+                <li><strong>Fingerprinting:</strong> Device fingerprints help detect suspicious activity.</li>
+                <li><strong>Account Lockout:</strong> 5 failed login attempts = 15-minute lockout.</li>
+            </ul>
+
+            <h4>8.3 Data Storage</h4>
+            <ul>
+                <li>Text messages are stored on secure Supabase servers.</li>
+                <li>Files are stored in Supabase Storage with public URLs.</li>
+                <li>Video/audio call content is NEVER stored—only peer-to-peer.</li>
+                <li>Account data is deleted within 30 days of account deletion.</li>
+            </ul>
+
+            <h3>9. Troubleshooting</h3>
+            <h4>9.1 Can't Connect to Video Call</h4>
+            <ul>
+                <li>Ensure you're using HTTPS (not HTTP).</li>
+                <li>Grant camera/microphone permissions in browser settings.</li>
+                <li>Check if another app is using your camera.</li>
+                <li>Try a different browser (Chrome, Firefox, or Edge recommended).</li>
+                <li>Disable VPN or firewall temporarily.</li>
+            </ul>
+
+            <h4>9.2 Messages Not Sending</h4>
+            <ul>
+                <li>Check your internet connection.</li>
+                <li>Refresh the page (Ctrl+R or Cmd+R).</li>
+                <li>Clear browser cache and cookies.</li>
+                <li>Verify you haven't hit rate limits (100 messages/minute).</li>
+            </ul>
+
+            <h4>9.3 Friend Request Not Arriving</h4>
+            <ul>
+                <li>Verify you entered the exact username (case-sensitive).</li>
+                <li>Check if the user has blocked you.</li>
+                <li>Wait a few minutes and check notifications again.</li>
+                <li>Ask them to check their "Pending Requests" section.</li>
+            </ul>
+
+            <h4>9.4 File Upload Failing</h4>
+            <ul>
+                <li>Ensure file is under 25MB.</li>
+                <li>Check supported file types (images, videos, documents, audio).</li>
+                <li>Try compressing large files before uploading.</li>
+                <li>Check your internet connection stability.</li>
+            </ul>
+
+            <h3>10. Keyboard Shortcuts</h3>
+            <table style="width: 100%; border-collapse: collapse; margin: 1rem 0;">
+                <thead>
+                    <tr style="background: var(--tertiary-bg);">
+                        <th style="padding: 0.75rem; text-align: left; border: 1px solid var(--border-color);">Action
+                        </th>
+                        <th style="padding: 0.75rem; text-align: left; border: 1px solid var(--border-color);">Shortcut
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="padding: 0.75rem; border: 1px solid var(--border-color);">Send Message</td>
+                        <td style="padding: 0.75rem; border: 1px solid var(--border-color);"><code>Enter</code></td>
+                    </tr>
+                    <tr style="background: var(--secondary-bg);">
+                        <td style="padding: 0.75rem; border: 1px solid var(--border-color);">New Line</td>
+                        <td style="padding: 0.75rem; border: 1px solid var(--border-color);"><code>Shift + Enter</code>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 0.75rem; border: 1px solid var(--border-color);">Open Settings</td>
+                        <td style="padding: 0.75rem; border: 1px solid var(--border-color);">
+                            <code>Click Gear Icon</code>
+                        </td>
+                    </tr>
+                    <tr style="background: var(--secondary-bg);">
+                        <td style="padding: 0.75rem; border: 1px solid var(--border-color);">Close Modal</td>
+                        <td style="padding: 0.75rem; border: 1px solid var(--border-color);"><code>Esc</code></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>11. API & Development</h3>
+            <h4>11.1 Technology Stack</h4>
+            <ul>
+                <li><strong>Frontend:</strong> Vanilla JavaScript (ES6+), HTML5, CSS3</li>
+                <li><strong>Backend:</strong> Supabase (PostgreSQL, Realtime, Storage, Auth)</li>
+                <li><strong>WebRTC:</strong> PeerJS library for video/audio calls</li>
+                <li><strong>Icons:</strong> Font Awesome 6</li>
+            </ul>
+
+            <h4>11.2 Self-Hosting</h4>
+            <p>To self-host Palyra, you'll need:</p>
+            <ol>
+                <li>A Supabase project (free tier available).</li>
+                <li>Node.js for development server.</li>
+                <li>SSL certificate for HTTPS (required for video calls).</li>
+            </ol>
+            <p>See the <a href="https://github.com/palyra/palyra" target="_blank" rel="noopener noreferrer">GitHub
+                    README</a> for detailed setup instructions.</p>
+
+            <h4>11.3 Contributing</h4>
+            <p>Palyra is open source! Contributions are welcome:</p>
+            <ul>
+                <li><strong>GitHub:</strong> <a href="https://github.com/palyra/palyra" target="_blank"
+                        rel="noopener noreferrer">github.com/palyra/palyra</a></li>
+                <li><strong>Issues:</strong> Report bugs or request features in GitHub Issues.</li>
+                <li><strong>Pull Requests:</strong> Submit code improvements via PRs.</li>
+                <li><strong>Discord:</strong> Join our developer community to discuss ideas.</li>
+            </ul>
+
+            <h3>12. Support & Community</h3>
+            <h4>12.1 Getting Help</h4>
+            <ul>
+                <li><strong>Email:</strong> support@palyra.com</li>
+                <li><strong>Discord:</strong> <a href="https://discord.gg/palyra" target="_blank"
+                        rel="noopener noreferrer">Join our server</a> for real-time help</li>
+                <li><strong>GitHub:</strong> <a href="https://github.com/palyra" target="_blank"
+                        rel="noopener noreferrer">Open an issue</a></li>
+                <li><strong>FAQ:</strong> Check common questions in this documentation</li>
+            </ul>
+
+            <h4>12.2 Community Guidelines</h4>
+            <ul>
+                <li>Be respectful and kind to other users.</li>
+                <li>Do not share illegal or harmful content.</li>
+                <li>Report abuse or violations to support@palyra.com.</li>
+                <li>Help newcomers and contribute to a positive community.</li>
+            </ul>
+
+            <h3>13. Changelog</h3>
+            <h4>Version 1.0.0 (February 2026)</h4>
+            <ul>
+                <li>Initial release with direct messaging and video calls.</li>
+                <li>Server (group chat) functionality.</li>
+                <li>File sharing with automatic image compression.</li>
+                <li>Message reactions, replies, and editing.</li>
+                <li>Link previews and typing indicators.</li>
+                <li>Dark/light themes and customization options.</li>
+                <li>Security features: rate limiting, bot detection, fingerprinting.</li>
+            </ul>
+
+            <h3>14. Roadmap</h3>
+            <p>Upcoming features we're working on:</p>
+            <ul>
+                <li>End-to-end encryption for text messages.</li>
+                <li>Voice messages and audio notes.</li>
+                <li>Message search functionality.</li>
+                <li>User profiles with custom status messages.</li>
+                <li>Message pinning in servers.</li>
+                <li>Two-factor authentication (2FA).</li>
+                <li>Mobile apps (iOS/Android).</li>
+            </ul>
+
+            <h3>15. Contact & Legal</h3>
+            <p>For questions, concerns, or feedback:</p>
+            <ul>
+                <li><strong>General Support:</strong> support@palyra.com</li>
+                <li><strong>Privacy Questions:</strong> privacy@palyra.com</li>
+                <li><strong>Legal/DMCA:</strong> legal@palyra.com</li>
+                <li><strong>Security Issues:</strong> security@palyra.com</li>
+            </ul>
+            <p>Read our <a href="/privacy-policy">Privacy Policy</a> and <a href="/terms-of-service">Terms of
+                    Service</a>.
+            </p>
+        </div>
+    </main>
+
+    <div id="auth-container" class="hidden">
+        <footer class="auth-footer">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h4>Palyra</h4>
+                    <p>Decentralized, peer-to-peer communication built for privacy and security.</p>
+                </div>
+                <div class="footer-section">
+                    <h4>Resources</h4>
+                    <a href="/privacy-policy" target="_blank" rel="noopener noreferrer">Privacy
+                        Policy</a>
+                    <a href="/terms-of-service" target="_blank" rel="noopener noreferrer">Terms of
+                        Service</a>
+                    <a href="/documentation" target="_blank" rel="noopener noreferrer">Documentation</a>
+                </div>
+                <div class="footer-section">
+                    <h4>Support</h4>
+                    <a href="https://github.com/endoverdosing/palyra" target="_blank" rel="noopener noreferrer">Send
+                        Feedback</a>
+                </div>
+                <div class="footer-section">
+                    <h4>Connect</h4>
+                    <div class="social-links">
+                        <a href="https://github.com/endoverdosing/Palyra" target="_blank" rel="noopener noreferrer">
+                            <i class="fab fa-github"></i> GitHub
+                        </a>
+                        <a href="https://discord.gg/94KwX2ZtzK" target="_blank" rel="noopener noreferrer">
+                            <i class="fab fa-discord"></i> Discord
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-divider"></div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 Palyra. End-to-end encrypted messaging.</p>
+            </div>
+        </footer>
+    </div>
+
+</html>
