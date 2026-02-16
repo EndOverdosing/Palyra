@@ -12,31 +12,31 @@ Palyra is a full-featured communication platform that enables users to connect t
 
 ## Key Features
 
-### 🔒 Security & Privacy
+### Security & Privacy
 - **End-to-end encrypted** peer-to-peer video calls
 - **Secure authentication** with fingerprint tracking
 - **Bot detection** and rate limiting
 - **User blocking** and privacy controls
 
-### 💬 Messaging
+### Messaging
 - **Real-time text messaging** with typing indicators
 - **File sharing** with automatic image compression
 - **Message reactions** and replies
 - **Link previews** with automatic URL detection
 - **Message editing** and deletion
 
-### 📹 Video Calls
+### Video Calls
 - **High-quality video and audio** streaming
 - **Screen sharing** capabilities
 - **Camera switching** on mobile devices
 - **Call duration tracking**
 
-### 🌐 Servers
+### Servers
 - **Public and private servers** for group communication
 - **Server management** with owner controls
 - **Member moderation** (kick/ban functionality)
 
-### 🎨 User Experience
+### User Experience
 - **Responsive design** for desktop and mobile
 - **Dark/light theme** support
 - **Customizable font sizes**
