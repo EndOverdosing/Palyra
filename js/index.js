@@ -3808,13 +3808,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
 
+            contentWrapper.appendChild(contentDiv);
+            addLinkPreviewsToMessage(contentWrapper, message.content);
+
             if (message.edited) {
-                const editedSpan = document.createElement('span');
+                const editedSpan = document.createElement('div');
                 editedSpan.className = 'message-edited';
-                editedSpan.style.cssText = 'font-size: 0.75rem; color: var(--secondary-text); margin-left: 0.5rem;';
-                editedSpan.textContent = '(edited)';
-                contentDiv.appendChild(editedSpan);
+                editedSpan.style.cssText = 'font-size: 0.7rem; color: var(--secondary-text); margin-top: 0.15rem;';
+                editedSpan.textContent = 'edited';
+                contentWrapper.appendChild(editedSpan);
             }
+        }
 
             contentWrapper.appendChild(contentDiv);
             addLinkPreviewsToMessage(contentWrapper, message.content);
@@ -5883,7 +5887,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const email = `${username.toLowerCase().replace(/[^a-z0-9]/g, '')}@p2p.local`;
+            const email = `${username.toLowerCase().replace(/[^a-z0-9_]/g, '')}@p2p.local`;
 
             const { data: authData, error: signupError } = await supabaseClient.auth.signUp({
                 email: email,
