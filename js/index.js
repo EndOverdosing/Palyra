@@ -5808,14 +5808,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         password(password) {
             if (!password || typeof password !== 'string') return false;
-            if (password.length < securityConfig.minPasswordLength) return false;
-
-            const hasUpper = /[A-Z]/.test(password);
-            const hasLower = /[a-z]/.test(password);
-            const hasNumber = /[0-9]/.test(password);
-            const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password);
-
-            return hasUpper && hasLower && hasNumber && hasSpecial;
+            if (password.length < 4) return false;
+            if (!/[0-9]/.test(password)) return false;
+            return true;
         },
 
         message(message) {
@@ -5884,7 +5879,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (!validateInput.password(password)) {
-            showInfoModal('Weak password', 'Password must be at least 12 characters and include uppercase, lowercase, number, and special character.');
+            showInfoModal('Weak password', 'Password must be at least 4 characters and include at least one number.');
             return;
         }
 
