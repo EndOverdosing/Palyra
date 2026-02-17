@@ -5311,17 +5311,16 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const { data: validRequest } = await supabase
-            .rpc('validate_friend_request', {
-                sender_id: currentUser.id,
-                receiver_id: targetUser.id
-            });
+       const { data: existingFriendship } = await supabase
+            .from('friendships')
+            .select('id')
+            .or(`and(user_id.eq.${currentUser.id},friend_id.eq.${targetUser.id}),and(user_id.eq.${targetUser.id},friend_id.eq.${currentUser.id})`)
+            .maybeSingle();
 
-        if (!validRequest) {
+        if (existingFriendship) {
             showInfoModal('Request exists', 'Friend request already exists or you are already friends.');
             return;
         }
-
         const { data: newRequest, error } = await supabase
             .from('friendships')
             .insert([{
@@ -5884,7 +5883,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const email = `${username.toLowerCase().replace(/[^a-z0-9]/g, '')}${Date.now()}@p2p.local`;
+            const email = `${username.toLowerCase().replace(/[^a-z0-9]/g, '')}@p2p.local`;
 
             const { data: authData, error: signupError } = await supabaseClient.auth.signUp({
                 email: email,
