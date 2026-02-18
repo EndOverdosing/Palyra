@@ -4204,8 +4204,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            contentElement.textContent = '';
-            const textNode = document.createTextNode(newContent);
+editContainer.remove();
+contentElement.style.display = '';
+contentElement.textContent = '';
+const textNode = document.createTextNode(newContent);
             const editedSpan = document.createElement('span');
             editedSpan.className = 'message-edited';
             editedSpan.style.cssText = 'font-size: 0.75rem; color: var(--secondary-text); margin-left: 0.5rem;';
@@ -4406,14 +4408,15 @@ document.addEventListener('DOMContentLoaded', () => {
         editContainer.appendChild(textarea);
         editContainer.appendChild(buttonContainer);
 
-        contentElement.innerHTML = '';
-        contentElement.appendChild(editContainer);
+contentElement.style.display = 'none';
+contentWrapper.appendChild(editContainer);
 
         textarea.focus();
 textarea.setSelectionRange(textarea.value.length, textarea.value.length);
 
 const cancelEdit = () => {
-    contentElement.innerHTML = '';
+    editContainer.remove();
+    contentElement.style.display = '';
     const urlRegex = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/g;
     const parts = originalText.split(urlRegex);
     parts.forEach((part) => {
