@@ -3820,10 +3820,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-            contentWrapper.appendChild(contentDiv);
-            addLinkPreviewsToMessage(contentWrapper, message.content);
-        }
-
         if (message.call_duration !== null && message.call_duration !== undefined) {
             const duration = formatCallDuration(message.call_duration);
             const callType = message.call_duration === 0 ? 'Missed call' : 'Call';
@@ -4181,14 +4177,24 @@ document.addEventListener('DOMContentLoaded', () => {
         textarea.setSelectionRange(textarea.value.length, textarea.value.length);
 
         const cancelEdit = () => {
-            contentElement.textContent = originalText;
-            if (wasEdited) {
-                const editedSpan = document.createElement('span');
-                editedSpan.className = 'message-edited';
-                editedSpan.style.cssText = 'font-size: 0.75rem; color: var(--secondary-text); margin-left: 0.5rem;';
-                editedSpan.textContent = '(edited)';
-                contentElement.appendChild(editedSpan);
-            }
+            contentElement.innerHTML = '';
+            const urlRegex = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/g;
+            const parts = originalText.split(urlRegex);
+            parts.forEach((part) => {
+                if (part.match(urlRegex)) {
+                    const link = document.createElement('a');
+                    link.href = part;
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    link.className = 'message-link';
+                    link.textContent = part;
+                    contentElement.appendChild(link);
+                } else if (part) {
+                    contentElement.appendChild(document.createTextNode(part));
+                }
+            });
+            const existingEdited = msgElement.querySelector('.message-edited');
+            if (existingEdited) contentElement.appendChild(existingEdited);
         };
 
         const saveEdit = async () => {
@@ -4404,9 +4410,30 @@ document.addEventListener('DOMContentLoaded', () => {
         contentElement.appendChild(editContainer);
 
         textarea.focus();
-        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+textarea.setSelectionRange(textarea.value.length, textarea.value.length);
 
-        const saveEdit = async () => {
+const cancelEdit = () => {
+    contentElement.innerHTML = '';
+    const urlRegex = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/g;
+    const parts = originalText.split(urlRegex);
+    parts.forEach((part) => {
+        if (part.match(urlRegex)) {
+            const link = document.createElement('a');
+            link.href = part;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.className = 'message-link';
+            link.textContent = part;
+            contentElement.appendChild(link);
+        } else if (part) {
+            contentElement.appendChild(document.createTextNode(part));
+        }
+    });
+    const existingEdited = msgElement.querySelector('.message-edited');
+    if (existingEdited) contentElement.appendChild(existingEdited);
+};
+
+const saveEdit = async () => {
             const newContent = textarea.value.trim();
             if (!newContent) {
                 cancelEdit();
@@ -4452,14 +4479,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
 
                 supabaseClient.removeChannel(channel);
-            }
-        };
-
-        const cancelEdit = () => {
-            contentElement.textContent = originalText;
-            const editedBadge = msgElement.querySelector('.message-edited');
-            if (editedBadge) {
-                contentElement.appendChild(editedBadge);
             }
         };
 
