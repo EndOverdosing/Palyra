@@ -297,6 +297,24 @@ body {
     font-size: 0.7rem;
 }
 
+#sidebar {
+    padding-top: env(safe-area-inset-top, 0px);
+}
+
+@media (max-width: 909px) {
+    #sidebar {
+        padding-top: env(safe-area-inset-top, 0px);
+    }
+
+    #main-app {
+        padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+    }
+
+    #message-form {
+        bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+    }
+}
+
 @media (max-width: 768px) {
     .auth-footer {
         margin-top: 2rem;
@@ -775,7 +793,7 @@ button.secondary:hover {
     content: '';
     position: fixed;
     inset: 0 0 auto 0;
-    height: calc(120px + env(safe-area-inset-top, 0));
+    height: calc(120px + env(safe-area-inset-top, 0px));
     background: transparent;
     backdrop-filter: blur(48px) saturate(1.15);
     -webkit-backdrop-filter: blur(48px) saturate(1.15);
