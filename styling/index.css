@@ -126,7 +126,7 @@ body {
     }
 
     #message-form {
-        bottom: env(safe-area-inset-bottom) !important;
+        bottom: none !important;
         width: 100% !important;
     }
 
@@ -135,24 +135,23 @@ body {
     }
 
     #navbar-in-sidebar {
-        bottom: env(safe-area-inset-bottom) !important;
-        padding-bottom: 4px !important;
+        bottom: none !important;
     }
 
     #sidebar {
-        padding-bottom: calc(50px + env(safe-area-inset-bottom)) !important;
+        bottom: none !important;
         height: 100dvh !important;
     }
 
     .file-attachment-preview {
         width: 100% !important;
-        margin-bottom: 60px !important;
+        margin-bottom: 0px !important;
     }
 }
 
 @media (display-mode: standalone) and (max-width: 909px) {
     #sidebar {
-        padding-bottom: calc(60px + env(safe-area-inset-bottom)) !important;
+        padding-bottom: none !important;
     }
 
     #message-form {
@@ -164,7 +163,6 @@ body {
   #sidebar {
     height: 100%;
     padding-top: env(safe-area-inset-top);
-    padding-bottom: calc(60px + env(safe-area-inset-bottom));
   }
 
   .sidebar-header {
@@ -172,16 +170,11 @@ body {
   }
 
   #navbar-in-sidebar {
-    padding-bottom: calc(4px + env(safe-area-inset-bottom));
     padding-top: 4px;
   }
 
   #chat-container {
     height: 100%;
-  }
-
-  #message-form {
-    bottom: env(safe-area-inset-bottom);
   }
 }
 
