@@ -916,7 +916,7 @@ button.secondary:hover {
     padding: 0.4rem 1.5rem;
     flex-shrink: 0;
     width: auto;
-    margin: 10px auto 0;
+    margin: calc(10px + env(safe-area-inset-top)) auto 0;
     border-radius: var(--button-border-radius-round);
     position: absolute;
     left: 50%;
@@ -1496,6 +1496,7 @@ button.secondary:hover {
 
 #message-form {
     padding: 1rem;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
     background: transparent;
     flex-shrink: 0;
     position: absolute;
@@ -1503,7 +1504,6 @@ button.secondary:hover {
     left: 0;
     right: 0;
     z-index: 10;
-
     width: 50%;
     margin-left: auto;
     margin-right: auto;
@@ -4028,8 +4028,10 @@ body[data-font-size="large"] {
     }
 
     #message-form {
-        width: 100% !important;
-    }
+    width: 100% !important;
+    bottom: 0 !important;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+}
 
     .file-attachment-preview {
         width: 100% !important;
