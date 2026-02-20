@@ -120,6 +120,36 @@ body {
   padding-top: 1rem;
 }
 
+@media (display-mode: standalone) {
+    #message-form {
+        bottom: 0 !important;
+        padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)) !important;
+    }
+
+    #navbar-in-sidebar {
+        bottom: 0 !important;
+        padding-bottom: calc(4px + env(safe-area-inset-bottom)) !important;
+    }
+
+    .bottom-overlay {
+        bottom: calc(60px + env(safe-area-inset-bottom)) !important;
+    }
+
+    .file-attachment-preview {
+        margin-bottom: 80px !important;
+    }
+}
+
+@media (display-mode: standalone) and (max-width: 909px) {
+    #sidebar {
+        padding-bottom: calc(60px + env(safe-area-inset-bottom)) !important;
+    }
+
+    #message-form {
+        bottom: 0 !important;
+    }
+}
+
 @media (max-width: 909px) {
   #sidebar {
     height: 100%;
